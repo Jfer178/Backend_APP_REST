@@ -8,6 +8,13 @@
       "when": 1773412065223,
       "tag": "0000_cool_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1773785790648,
+      "tag": "0001_soft_frightful_four",
+      "breakpoints": true
     }
   ]
 }

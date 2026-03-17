@@ -35,6 +35,10 @@ import opcionesActividadesRoutes from './routes/opciones-actividades.routes';
 import registroActividadesRoutes from './routes/registro-actividades.routes';
 import encuestasRespuestasRoutes from './routes/encuestas-respuestas.routes';
 import registroEmocionalRoutes from './routes/registro-emocional.routes';
+import notificacionRoutes from './routes/notificacion.routes';
+
+// CRONJOBS
+import { iniciarCronJobs, detenerCronJobs } from './jobs/notificacion.cron';
 
 // Load environment variables
 dotenv.config();
@@ -58,12 +62,13 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/evaluaciones', evaluacionRoutes);
 app.use('/api/chats', chatRoutes);
-app.use('/api/encuestas', encuestasRoutes)
-app.use('/api/encuestas-respuestas', encuestasRespuestasRoutes)
-app.use('/api/diario', diarioRoutes)
-app.use('/api/opciones-actividades', opcionesActividadesRoutes)
-app.use('/api/registro-actividades', registroActividadesRoutes)
-app.use('/api/registro-emocional', registroEmocionalRoutes)
+app.use('/api/encuestas', encuestasRoutes);
+app.use('/api/encuestas-respuestas', encuestasRespuestasRoutes);
+app.use('/api/diario', diarioRoutes);
+app.use('/api/opciones-actividades', opcionesActividadesRoutes);
+app.use('/api/registro-actividades', registroActividadesRoutes);
+app.use('/api/registro-emocional', registroEmocionalRoutes);
+app.use('/api/notificaciones', notificacionRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Health check endpoint
@@ -89,12 +94,17 @@ async function initializeAndStartServer() {
     await seed();
     
     // Initialize Ollama if enabled
-      try {
-        await initializeOllama();
-      } catch (ollamaError) {
-        console.warn('Warning: Could not initialize Ollama:', ollamaError);
-        console.log('Server will continue without Ollama support');
-      }
+    try {
+      await initializeOllama();
+    } catch (ollamaError) {
+      console.warn('Warning: Could not initialize Ollama:', ollamaError);
+      console.log('Server will continue without Ollama support');
+    }
+    
+    // Start cronjobs for notifications
+    if (process.env.ENABLE_NOTIFICATION_CRON !== 'false') {
+      iniciarCronJobs();
+    }
     
     // Start the server
     server.listen(PORT, () => {
@@ -111,6 +121,25 @@ async function initializeAndStartServer() {
     process.exit(1);
   }
 }
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  detenerCronJobs();
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT signal received: closing HTTP server');
+  detenerCronJobs();
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+});
 
 initializeAndStartServer();
 

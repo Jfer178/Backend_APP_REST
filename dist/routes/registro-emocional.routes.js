@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const registro_emocional_middleware_1 = require("../middleware/registro-emocional.middleware");
+const registro_emocional_controller_1 = require("../controllers/registro-emocional.controller");
+const router = (0, express_1.Router)();
+router.get('/preguntas', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, registro_emocional_controller_1.getPreguntasRegistroEmocional);
+router.get('/usuarios/:usuarioId/fecha/:fecha', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, registro_emocional_middleware_1.validateGetRespuestasUsuarioPorFecha, registro_emocional_controller_1.getRespuestasUsuarioPorFecha);
+router.post('/', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, registro_emocional_middleware_1.validateSaveRespuestasRegistroEmocional, registro_emocional_controller_1.saveRespuestasRegistroEmocional);
+exports.default = router;

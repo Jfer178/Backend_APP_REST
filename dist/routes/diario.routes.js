@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const diario_controller_1 = require("../controllers/diario.controller");
+const router = (0, express_1.Router)();
+router.get('/', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, diario_controller_1.listDiario);
+router.get('/:id', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, diario_controller_1.getDiarioById);
+router.post('/', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, diario_controller_1.createDiario);
+router.put('/:id', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, diario_controller_1.updateDiarioPut);
+router.patch('/:id', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, diario_controller_1.updateDiarioPatch);
+router.delete('/:id', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, diario_controller_1.deleteDiario);
+exports.default = router;

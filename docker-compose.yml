@@ -11,6 +11,12 @@ services:
       - OLLAMA_MODEL=qwen2.5:0.5b
       - USE_OLLAMA=true
       - PORT=3000
+      # Notification System Cronjobs
+      - ENABLE_NOTIFICATION_CRON=true
+      - ENABLE_DAILY_REMINDERS=true
+      - ENABLE_EMOTIONAL_ALERTS=true
+      - ENABLE_EVALUATION_REMINDERS=true
+      - TZ=America/Mexico_City
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const registro_actividades_controller_1 = require("../controllers/registro-actividades.controller");
+const router = (0, express_1.Router)();
+router.get('/', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, registro_actividades_controller_1.listRegistros);
+router.get('/:id', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, registro_actividades_controller_1.getRegistroById);
+router.post('/', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, registro_actividades_controller_1.createRegistro);
+router.put('/:id', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, registro_actividades_controller_1.updateRegistroPut);
+router.patch('/:id', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, registro_actividades_controller_1.updateRegistroPatch);
+router.delete('/:id', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, registro_actividades_controller_1.deleteRegistro);
+exports.default = router;

@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const encuestas_respuestas_controller_1 = require("../controllers/encuestas-respuestas.controller");
+const router = (0, express_1.Router)();
+router.get('/', auth_middleware_1.authenticate, encuestas_respuestas_controller_1.listRespuestas);
+router.get('/:id', auth_middleware_1.authenticate, encuestas_respuestas_controller_1.getRespuestaById);
+router.post('/', auth_middleware_1.authenticate, auth_middleware_1.isUsuario, encuestas_respuestas_controller_1.createRespuesta);
+router.put('/:id', auth_middleware_1.authenticate, encuestas_respuestas_controller_1.updateRespuestaPut);
+router.patch('/:id', auth_middleware_1.authenticate, encuestas_respuestas_controller_1.updateRespuestaPatch);
+router.delete('/:id', auth_middleware_1.authenticate, encuestas_respuestas_controller_1.deleteRespuesta);
+exports.default = router;

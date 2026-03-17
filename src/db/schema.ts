@@ -518,3 +518,115 @@ export const texto_aplicacion = pgTable('texto_aplicacion', {
   updated_at: timestamp('updated_at').defaultNow().notNull(),
   deleted_at: timestamp('deleted_at'),
 });
+
+// ================================
+// NOTIFICACIONES
+// ================================
+
+export const notificaciones = pgTable('notificaciones', {
+  id: serial('id').primaryKey(),
+
+  usuario_id: integer('usuario_id')
+    .references(() => usuarios.id, { onDelete: 'cascade' }),
+
+  tipo: varchar('tipo', { length: 50 }).notNull(), // 'recordatorio_uso', 'alerta_emocional', 'recomendacion_actividad', 'seguimiento_evaluacion'
+  
+  titulo: varchar('titulo', { length: 255 }).notNull(),
+  mensaje: text('mensaje').notNull(),
+  
+  prioridad: varchar('prioridad', { length: 20 }).default('normal').notNull(), // 'baja', 'normal', 'alta', 'urgente'
+  
+  datos_adicionales: text('datos_adicionales'), // JSON con datos extra según el tipo
+  
+  leida: boolean('leida').default(false).notNull(),
+  fecha_leida: timestamp('fecha_leida'),
+  
+  enviada: boolean('enviada').default(false).notNull(),
+  fecha_envio: timestamp('fecha_envio'),
+  
+  programada_para: timestamp('programada_para'), // Para notificaciones programadas
+  
+  created_at: timestamp('created_at').defaultNow().notNull(),
+  updated_at: timestamp('updated_at').defaultNow().notNull(),
+  deleted_at: timestamp('deleted_at'),
+}, (t) => ({
+  idxNotificacionesUsuarioId: index('idx_notificaciones_usuario_id').on(t.usuario_id),
+  idxNotificacionesTipo: index('idx_notificaciones_tipo').on(t.tipo),
+  idxNotificacionesEnviada: index('idx_notificaciones_enviada').on(t.enviada),
+  idxNotificacionesProgramadaPara: index('idx_notificaciones_programada_para').on(t.programada_para),
+}));
+
+export const notificacionesRelations = relations(notificaciones, ({ one }) => ({
+  usuario: one(usuarios, {
+    fields: [notificaciones.usuario_id],
+    references: [usuarios.id],
+  }),
+}));
+
+export const preferencias_notificacion = pgTable('preferencias_notificacion', {
+  id: serial('id').primaryKey(),
+
+  usuario_id: integer('usuario_id')
+    .references(() => usuarios.id, { onDelete: 'cascade' })
+    .unique(),
+
+  recordatorios_uso: boolean('recordatorios_uso').default(true).notNull(),
+  alertas_emocionales: boolean('alertas_emocionales').default(true).notNull(),
+  recomendaciones_actividades: boolean('recomendaciones_actividades').default(true).notNull(),
+  seguimientos_evaluacion: boolean('seguimientos_evaluacion').default(true).notNull(),
+  
+  frecuencia_recordatorios: varchar('frecuencia_recordatorios', { length: 20 }).default('diario').notNull(), // 'diario', 'semanal', 'desactivado'
+  hora_preferida_recordatorio: varchar('hora_preferida_recordatorio', { length: 5 }).default('09:00'), // HH:mm formato 24h
+  
+  notificaciones_email: boolean('notificaciones_email').default(false).notNull(),
+  notificaciones_push: boolean('notificaciones_push').default(true).notNull(),
+  
+  created_at: timestamp('created_at').defaultNow().notNull(),
+  updated_at: timestamp('updated_at').defaultNow().notNull(),
+  deleted_at: timestamp('deleted_at'),
+}, (t) => ({
+  idxPreferenciasNotificacionUsuarioId: index('idx_preferencias_notificacion_usuario_id').on(t.usuario_id),
+}));
+
+export const preferenciasNotificacionRelations = relations(preferencias_notificacion, ({ one }) => ({
+  usuario: one(usuarios, {
+    fields: [preferencias_notificacion.usuario_id],
+    references: [usuarios.id],
+  }),
+}));
+
+export const logs_notificaciones = pgTable('logs_notificaciones', {
+  id: serial('id').primaryKey(),
+
+  notificacion_id: integer('notificacion_id')
+    .references(() => notificaciones.id, { onDelete: 'set null' }),
+
+  usuario_id: integer('usuario_id')
+    .references(() => usuarios.id, { onDelete: 'set null' }),
+    
+  tipo: varchar('tipo', { length: 50 }).notNull(),
+  
+  estado: varchar('estado', { length: 20 }).notNull(), // 'enviado', 'fallido', 'pendiente'
+  mensaje_error: text('mensaje_error'),
+  
+  canal: varchar('canal', { length: 20 }).notNull(), // 'app', 'email', 'push'
+  
+  fecha_intento: timestamp('fecha_intento').defaultNow().notNull(),
+  
+  created_at: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({
+  idxLogsNotificacionesNotificacionId: index('idx_logs_notificaciones_notificacion_id').on(t.notificacion_id),
+  idxLogsNotificacionesUsuarioId: index('idx_logs_notificaciones_usuario_id').on(t.usuario_id),
+  idxLogsNotificacionesFechaIntento: index('idx_logs_notificaciones_fecha_intento').on(t.fecha_intento),
+}));
+
+export const logsNotificacionesRelations = relations(logs_notificaciones, ({ one }) => ({
+  notificacion: one(notificaciones, {
+    fields: [logs_notificaciones.notificacion_id],
+    references: [notificaciones.id],
+  }),
+  usuario: one(usuarios, {
+    fields: [logs_notificaciones.usuario_id],
+    references: [usuarios.id],
+  }),
+}));
