@@ -35,6 +35,8 @@ import opcionesActividadesRoutes from './routes/opciones-actividades.routes';
 import registroActividadesRoutes from './routes/registro-actividades.routes';
 import encuestasRespuestasRoutes from './routes/encuestas-respuestas.routes';
 import registroEmocionalRoutes from './routes/registro-emocional.routes';
+import dashboardRoutes from './routes/dashboard.routes';
+import settingsRoutes from './routes/settings.routes';
 
 // Load environment variables
 dotenv.config();
@@ -65,7 +67,8 @@ app.use('/api/opciones-actividades', opcionesActividadesRoutes)
 app.use('/api/registro-actividades', registroActividadesRoutes)
 app.use('/api/registro-emocional', registroEmocionalRoutes)
 app.use('/api/admin', adminRoutes);
-
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/settings', settingsRoutes);
 // Health check endpoint
 app.get('/health', (_: Request, res: Response) => {
   res.status(200).json(APISuccessResponse({ health: 'ok' }, 'Health check successful'));
