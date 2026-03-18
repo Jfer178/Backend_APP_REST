@@ -56,9 +56,17 @@ services:
     image: curlimages/curl:latest
     depends_on:
       - ollama
-    volumes:
-      - ./scripts/init-ollama.sh:/init-ollama.sh:ro
-    command: ["sh", "/init-ollama.sh"]
+    command: >
+      sh -c "
+      ATTEMPT=0;
+      while [ $$ATTEMPT -lt 24 ]; do 
+        curl -f http://ollama:11434/api/tags >/dev/null 2>&1 && break;
+        ATTEMPT=$$((ATTEMPT+1));
+        sleep 5;
+      done;
+      curl -s http://ollama:11434/api/tags | grep -q qwen2.5 || curl -X POST http://ollama:11434/api/pull -H 'Content-Type: application/json' -d '{\"name\":\"qwen2.5:0.5b\"}' --no-buffer;
+      echo 'Ollama ready';
+      "
     networks:
       - app-network
     restart: "no"

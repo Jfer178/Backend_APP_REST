@@ -5,6 +5,7 @@ import { db } from '../db';
 import * as schema from '../db/schema';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { chatWithOllama } from '../services/ollama.service';
+import { APISuccessResponse, APIErrorResponse } from '../shared/utils/api.utils';
 
 // Validation schema for messages
 const mensajeSchema = z.object({
@@ -46,7 +47,7 @@ export const getChats = async (req: AuthRequest, res: Response): Promise<void> =
 export const chatConIA = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     if (!req.user?.id) {
-      res.status(401).json({ message: 'Usuario no autenticado' });
+      res.status(401).json(APIErrorResponse('Usuario no autenticado'));
       return;
     }
 
@@ -54,36 +55,40 @@ export const chatConIA = async (req: AuthRequest, res: Response): Promise<void> 
     const validationResult = chatIASchema.safeParse(req.body);
     
     if (!validationResult.success) {
-      res.status(400).json({ 
-        message: 'Datos inválidos', 
-        errors: validationResult.error.errors 
-      });
+      res.status(400).json(APIErrorResponse('Datos inválidos: ' + validationResult.error.errors[0].message));
       return;
     }
 
     const { mensaje, contexto } = validationResult.data;
 
     try {
-      const respuestaIA = await chatWithOllama(mensaje, contexto);
+      const respuestaIA = await Promise.race([
+        chatWithOllama(mensaje, contexto),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout')), 35000)
+        )
+      ]) as any;
       
-      res.json({
+      res.status(201).json(APISuccessResponse({
+        usuario_id: req.user.id,
         mensaje_usuario: mensaje,
         respuesta_ia: respuestaIA.respuesta,
-        timestamp: respuestaIA.timestamp,
-        usuario_id: req.user.id
-      });
+        timestamp: respuestaIA.timestamp
+      }, 'Chat completado exitosamente'));
 
-    } catch (aiError) {
+    } catch (aiError: any) {
       console.error('Error en chat con IA:', aiError);
       
-      res.status(503).json({ 
-        message: 'Error comunicándose con el servicio de IA. Por favor, intenta nuevamente.' 
-      });
+      if (aiError.message === 'Timeout' || aiError.message.includes('no responde')) {
+        res.status(503).json(APIErrorResponse('El servicio de IA está respondiendo lentamente. Por favor, intenta nuevamente en unos momentos.'));
+      } else {
+        res.status(503).json(APIErrorResponse('Error comunicándose con el servicio de IA. Por favor, intenta nuevamente.'));
+      }
     }
 
   } catch (error) {
     console.error('Error in AI chat:', error);
-    res.status(500).json({ message: 'Error en el servidor' });
+    res.status(500).json(APIErrorResponse('Error interno del servidor'));
   }
 };
 
@@ -93,21 +98,20 @@ export const chatConIA = async (req: AuthRequest, res: Response): Promise<void> 
 export const getHistorialChatIA = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     if (!req.user?.id) {
-      res.status(401).json({ message: 'Usuario no autenticado' });
+      res.status(401).json(APIErrorResponse('Usuario no autenticado'));
       return;
     }
 
     // For now, return empty history as we're not storing AI chats
     // This can be implemented later if needed
-    res.json({
-      message: 'Historial de chat con IA',
-      historial: [],
-      usuario_id: req.user.id
-    });
+    res.status(200).json(APISuccessResponse({
+      usuario_id: req.user.id,
+      historial: []
+    }, 'Historial de chat obtenido'));
 
   } catch (error) {
     console.error('Error fetching AI chat history:', error);
-    res.status(500).json({ message: 'Error en el servidor' });
+    res.status(500).json(APIErrorResponse('Error interno del servidor'));
   }
 }; 
 
@@ -371,22 +375,16 @@ const extraerTareasDelContenido = (contenido: string): any[] => {
   return [];
 };
 
-/**
- * Chat avanzado con IA - versión mejorada
- */
 export const chatConIAAvanzado = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     if (!req.user?.id) {
-      res.status(401).json({ message: 'Usuario no autenticado' });
+      res.status(401).json(APIErrorResponse('Usuario no autenticado'));
       return;
     }
 
     const validationResult = chatIASchema.safeParse(req.body);
     if (!validationResult.success) {
-      res.status(400).json({ 
-        message: 'Datos inválidos', 
-        errors: validationResult.error.errors 
-      });
+      res.status(400).json(APIErrorResponse('Datos inválidos: ' + validationResult.error.errors[0].message));
       return;
     }
 
@@ -435,19 +433,12 @@ Actúa como un asistente terapéutico especializado en salud mental y bienestar 
 - Ayuda en tareas, trabajos, exámenes o solución de ejercicios
 - Historia, cultura general, geografía, idiomas o biología
 - Tecnología, juegos, política o economía
-- Opiniones sobre productos, gustos, películas o arte
 - Religión, creencias personales o filosofía
 
-⚠️ Si el usuario realiza una pregunta fuera del contexto emocional o busca ayuda en tareas, responde exclusivamente con una frase como alguna de las siguientes (elige la más adecuada):
+⚠️ Si el usuario realiza una pregunta fuera del contexto emocional o busca ayuda en tareas, responde exclusivamente con una frase como alguna de las siguientes:
 1. "Mi función es acompañarte emocionalmente. ¿Quieres contarme cómo te has sentido últimamente?"
 2. "Estoy aquí para escucharte y ayudarte en tu proceso emocional, ¿quieres que hablemos de cómo estás hoy?"
-3. "Puedo ayudarte a entender lo que sientes o apoyarte si estás pasando por algo difícil. ¿Te gustaría que hablemos sobre eso?"
-4. "No puedo ayudarte con ese tema, pero estoy aquí para hablar contigo sobre lo que sientes y cómo te afecta."
-5. "Mi propósito no es resolver ejercicios ni responder preguntas técnicas, pero puedo escucharte si necesitas desahogarte."
-
-✏️ Asegúrate de que tus respuestas varíen en longitud, estructura y tono. Algunas pueden ser breves y directas, otras un poco más reflexivas. No uses lenguaje robótico ni repitas frases.
-
-🎯 Evita listas, repeticiones o respuestas artificiales. Sé humano, cercano, realista.
+3. "Puedo ayudarte a entender lo que sientes o apoyarte si estás pasando por algo difícil. ¿Te gustaría que hablemos?"
 
 ${contextoUsuario}
 
@@ -458,50 +449,26 @@ Usuario: ${mensaje}
 
     // Agregar recomendación de formulario si es necesario
     if (!evaluacion && !recomendoFormulario) {
-      prompt += `
-
-⚠️ El usuario aún no ha completado su evaluación emocional inicial. 
-Responde de forma empática, y al final incluye esta sugerencia (marcada para el sistema): 
-[RECOMENDAR_FORMULARIO]`;
-    } else if (evaluacion) {
-      prompt += `
-
-💡 Si consideras que es útil, incluye al final de tu respuesta un bloque con tareas sugeridas para el usuario en el siguiente formato JSON:
-Bloque de tareas sugeridas:
-[
-  {
-    "titulo": "...",
-    "descripcion": "...",
-    "prioridad": "alta|media|baja"
-  },
-  ...
-]`;
+      prompt += `\n⚠️ El usuario aún no ha completado su evaluación emocional inicial. Responde de forma empática y sugiere completarla.`;
     }
 
     // Llamar a la IA
     const respuestaIA = await chatWithOllama(prompt, contexto);
 
     // Procesar respuesta
-    const mostrarSugerenciaFormulario = respuestaIA.respuesta.includes('[RECOMENDAR_FORMULARIO]');
-    const contenidoLimpio = respuestaIA.respuesta.replace('[RECOMENDAR_FORMULARIO]', '').trim();
+    const tareas = extraerTareasDelContenido(respuestaIA.respuesta);
 
-    // Extraer tareas si existen
-    const tareas = extraerTareasDelContenido(contenidoLimpio);
-
-    res.json({
-      mensaje: {
-        text: contenidoLimpio,
-        isUser: false,
-        esRecomendacion: mostrarSugerenciaFormulario
-      },
+    res.status(201).json(APISuccessResponse({
+      usuario_id: usuarioId,
+      mensaje_usuario: mensaje,
+      respuesta_ia: respuestaIA.respuesta,
       tareas_generadas: tareas,
-      timestamp: respuestaIA.timestamp,
-      usuario_id: usuarioId
-    });
+      timestamp: respuestaIA.timestamp
+    }, 'Chat avanzado completado exitosamente'));
 
   } catch (error) {
-    console.error('Error en chat con IA:', error);
-    res.status(500).json({ message: 'Error en el servidor' });
+    console.error('Error en chat con IA avanzado:', error);
+    res.status(500).json(APIErrorResponse('Error interno del servidor'));
   }
 };
 
@@ -511,7 +478,7 @@ Bloque de tareas sugeridas:
 export const obtenerActividadesRecomendadas = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     if (!req.user?.id) {
-      res.status(401).json({ message: 'Usuario no autenticado' });
+      res.status(401).json(APIErrorResponse('Usuario no autenticado'));
       return;
     }
 
@@ -564,15 +531,15 @@ export const obtenerActividadesRecomendadas = async (req: AuthRequest, res: Resp
       }
     }
 
-    res.json({
+    res.status(200).json(APISuccessResponse({
       actividades_recomendadas: recomendaciones.slice(0, 5), // Top 5
       estado_emocional: evaluacion?.estado_semaforo || 'sin_evaluar',
       total_disponibles: actividadesDisponibles.length
-    });
+    }, 'Actividades recomendadas obtenidas'));
 
   } catch (error) {
     console.error('Error obteniendo actividades:', error);
-    res.status(500).json({ message: 'Error en el servidor' });
+    res.status(500).json(APIErrorResponse('Error interno del servidor'));
   }
 };
 
@@ -582,7 +549,7 @@ export const obtenerActividadesRecomendadas = async (req: AuthRequest, res: Resp
 export const obtenerEstadoPsicologicoUsuario = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     if (!req.user?.id) {
-      res.status(401).json({ message: 'Usuario no autenticado' });
+      res.status(401).json(APIErrorResponse('Usuario no autenticado'));
       return;
     }
 
@@ -590,10 +557,10 @@ export const obtenerEstadoPsicologicoUsuario = async (req: AuthRequest, res: Res
     const evaluacion = await obtenerUltimaEvaluacion(usuarioId);
 
     if (!evaluacion) {
-      res.json({
+      res.status(200).json(APISuccessResponse({
         tiene_evaluacion: false,
         mensaje: 'Aún no has completado tu evaluación emocional inicial'
-      });
+      }, 'Estado psicológico obtenido'));
       return;
     }
 
@@ -608,7 +575,7 @@ export const obtenerEstadoPsicologicoUsuario = async (req: AuthRequest, res: Res
       .from(schema.registro_emocional)
       .where(eq(schema.registro_emocional.usuario_id, usuarioId));
 
-    res.json({
+    res.status(200).json(APISuccessResponse({
       tiene_evaluacion: true,
       estado_actual: {
         nivel: evaluacion.estado_semaforo,
@@ -620,10 +587,10 @@ export const obtenerEstadoPsicologicoUsuario = async (req: AuthRequest, res: Res
         actividades_completadas: totalActividades.length,
         registros_emocionales: totalEmociones.length
       }
-    });
+    }, 'Estado psicológico obtenido'));
 
   } catch (error) {
     console.error('Error obteniendo estado psicológico:', error);
-    res.status(500).json({ message: 'Error en el servidor' });
+    res.status(500).json(APIErrorResponse('Error interno del servidor'));
   }
 };

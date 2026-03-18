@@ -17,10 +17,17 @@ import { createMensaje, deleteMensaje, getMensajeById, listMensajes, updateMensa
 
 const router = Router();
 
-// CRUD de Chats
+// ⚠️ RUTAS IA DEBEN IR PRIMERO (antes de /:chatId para evitar conflictos)
+router.post('/ia', authenticate, chatConIA);
+router.get('/ia/historial', authenticate, getHistorialChatIA);
+router.post('/ia/avanzado', authenticate, chatConIAAvanzado);
+router.get('/actividades/recomendadas', authenticate, obtenerActividadesRecomendadas);
+router.get('/estado-psicologico', authenticate, obtenerEstadoPsicologicoUsuario);
+
+// CRUD de Chats (después de rutas /ia)
 router.get('/', authenticate, listChats)
-router.get('/:chatId', authenticate, getChatById)
 router.post('/', authenticate, createChat)
+router.get('/:chatId', authenticate, getChatById)
 router.put('/:chatId', authenticate, updateChatPut)
 router.patch('/:chatId', authenticate, updateChatPatch)
 router.delete('/:chatId', authenticate, deleteChat)
@@ -32,14 +39,5 @@ router.post('/:chatId/mensajes', authenticate, createMensaje)
 router.put('/:chatId/mensajes/:mensajeId', authenticate, updateMensajePut)
 router.patch('/:chatId/mensajes/:mensajeId', authenticate, updateMensajePatch)
 router.delete('/:chatId/mensajes/:mensajeId', authenticate, deleteMensaje)
-
-// Rutas IA existentes
-router.post('/ia', authenticate, chatConIA);
-router.get('/ia/historial', authenticate, getHistorialChatIA);
-
-// Rutas IA avanzadas
-router.post('/ia/avanzado', authenticate, chatConIAAvanzado);
-router.get('/actividades/recomendadas', authenticate, obtenerActividadesRecomendadas);
-router.get('/estado-psicologico', authenticate, obtenerEstadoPsicologicoUsuario);
 
 export default router;

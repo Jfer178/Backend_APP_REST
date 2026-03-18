@@ -1,36 +1,45 @@
-#!/bin/bash
+#!/bin/sh
+# Wait for Ollama to be available
+echo "Starting Ollama initialization..."
 
-echo "🚀 Inicializando Ollama con modelo liviano..."
+ATTEMPT=0
+MAX_ATTEMPTS=24
 
-# Esperar a que Ollama esté disponible
-echo "⏳ Esperando a que Ollama esté disponible..."
-while ! curl -f http://ollama:11434/api/tags >/dev/null 2>&1; do
-    echo "Esperando Ollama..."
-    sleep 5
+while [ $ATTEMPT -lt $MAX_ATTEMPTS ]
+do
+  if curl -f http://ollama:11434/api/tags >/dev/null 2>&1
+  then
+    echo "Ollama is available"
+    break
+  fi
+  ATTEMPT=$((ATTEMPT + 1))
+  echo "Attempt $ATTEMPT/$MAX_ATTEMPTS - Waiting for Ollama..."
+  sleep 5
 done
 
-echo "✅ Ollama está disponible"
-
-# Verificar si el modelo ya está descargado
-MODEL_NAME="qwen2.5:0.5b"
-echo "🔍 Verificando si el modelo $MODEL_NAME ya está descargado..."
-
-if curl -s http://ollama:11434/api/tags | grep -q "$MODEL_NAME"; then
-    echo "✅ El modelo $MODEL_NAME ya está disponible"
-else
-    echo "📥 Descargando modelo $MODEL_NAME (más liviano disponible)..."
-    echo "⚠️  Este proceso puede tardar varios minutos la primera vez..."
-    
-    # Descargar el modelo
-    curl -X POST http://ollama:11434/api/pull \
-        -H "Content-Type: application/json" \
-        -d "{\"name\": \"$MODEL_NAME\"}" \
-        --no-buffer
-    
-    echo ""
-    echo "✅ Modelo $MODEL_NAME descargado exitosamente"
+if [ $ATTEMPT -eq $MAX_ATTEMPTS ]
+then
+  echo "Ollama not available after 2 minutes"
+  exit 1
 fi
 
-echo "🎉 Inicialización de Ollama completada"
-echo "💡 El modelo estará disponible en: http://localhost:11434"
-echo "📋 Puedes probar el chat IA en: http://localhost:3000/api/chats/ia"
+MODEL_NAME="qwen2.5:0.5b"
+echo "Checking if model $MODEL_NAME is already downloaded..."
+
+MODELS=$(curl -s http://ollama:11434/api/tags 2>/dev/null || echo "")
+
+if echo "$MODELS" | grep -q "$MODEL_NAME"
+then
+  echo "Model $MODEL_NAME is already available"
+else
+  echo "Downloading model $MODEL_NAME..."
+  echo "This process may take several minutes on first run..."
+  
+  curl -X POST http://ollama:11434/api/pull -H "Content-Type: application/json" -d "{\"name\": \"$MODEL_NAME\"}" --no-buffer 2>/dev/null || true
+  
+  echo "Model $MODEL_NAME ready"
+fi
+
+echo "Ollama initialization completed"
+echo "Ollama available at: http://ollama:11434"
+echo "Chat AI available at: http://localhost:3000/api/chats/ia"
