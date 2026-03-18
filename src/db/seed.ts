@@ -1,6 +1,7 @@
 import { db } from './index';
 import * as schema from './schema';
-import { inArray } from 'drizzle-orm';
+import { inArray, eq } from 'drizzle-orm';
+import bcrypt from 'bcrypt';
 
 async function seed() {
   console.log('Seeding database...');
@@ -20,6 +21,82 @@ async function seed() {
       .onConflictDoNothing({ target: schema.roles.id });
 
     console.log('Roles seeded successfully');
+    
+    // Seed de opciones de actividades
+    const opcionesActividadesExistentes = await db
+      .select({ id: schema.opciones_registro_actividades.id })
+      .from(schema.opciones_registro_actividades)
+      .limit(1);
+
+    if (opcionesActividadesExistentes.length === 0) {
+      const opcionesActividades = [
+        {
+          nombre: 'Meditación guiada',
+          descripcion: 'Sesión de meditación de 10-20 minutos para calmar la mente',
+          url_imagen: '/images/actividades/meditacion.png',
+          is_active: true,
+        },
+        {
+          nombre: 'Ejercicio físico moderado',
+          descripcion: 'Caminar, trotar o ejercicio ligero durante 30 minutos',
+          url_imagen: '/images/actividades/ejercicio.png',
+          is_active: true,
+        },
+        {
+          nombre: 'Respiración profunda',
+          descripcion: 'Técnicas de respiración para reducir la ansiedad',
+          url_imagen: '/images/actividades/respiracion.png',
+          is_active: true,
+        },
+        {
+          nombre: 'Diario reflexivo',
+          descripcion: 'Escribir sobre tus emociones y pensamientos del día',
+          url_imagen: '/images/actividades/diario.png',
+          is_active: true,
+        },
+        {
+          nombre: 'Relajación muscular progresiva',
+          descripcion: 'Tensar y relajar grupos musculares progresivamente',
+          url_imagen: '/images/actividades/relajacion.png',
+          is_active: true,
+        },
+        {
+          nombre: 'Yoga',
+          descripcion: 'Sesión de yoga para mejorar flexibilidad y bienestar',
+          url_imagen: '/images/actividades/yoga.png',
+          is_active: true,
+        },
+        {
+          nombre: 'Escuchar música relajante',
+          descripcion: 'Música clásica, ambiental o natural para tranquilizarce',
+          url_imagen: '/images/actividades/musica.png',
+          is_active: true,
+        },
+        {
+          nombre: 'Lectura',
+          descripcion: 'Leer un libro o artículo sobre bienestar emocional',
+          url_imagen: '/images/actividades/lectura.png',
+          is_active: true,
+        },
+        {
+          nombre: 'Paseo en la naturaleza',
+          descripcion: 'Caminar al aire libre en un parque o zona verde',
+          url_imagen: '/images/actividades/naturaleza.png',
+          is_active: true,
+        },
+        {
+          nombre: 'Conexión social',
+          descripcion: 'Llamar o pasar tiempo con amigos y seres queridos',
+          url_imagen: '/images/actividades/social.png',
+          is_active: true,
+        },
+      ];
+
+      await db.insert(schema.opciones_registro_actividades).values(opcionesActividades);
+      console.log('Actividades seeded successfully');
+    } else {
+      console.log('Actividades already exist, skipping seed');
+    }
     
     // Preguntas base (solo si no existen)
     const preguntasBase = [
@@ -189,6 +266,84 @@ async function seed() {
     } else {
       console.log('Preguntas y opciones de registro emocional ya existen');
     }
+
+    // ================================
+    // CREAR USUARIOS DE PRUEBA
+    // ================================
+    console.log('Creando usuarios de prueba...');
+
+    const usuariosDeTest = [
+      {
+        correo: 'admin@test.com',
+        nombres: 'Administrador',
+        apellidos: 'Prueba',
+        contrasena: '12345678',
+        id_rol: 1, // admin
+        telefono: '3001234567',
+        edad: 35,
+        sexo: 'M',
+        ciudad: 'Bogotá'
+      },
+      {
+        correo: 'psicologo@test.com',
+        nombres: 'Psicólogo',
+        apellidos: 'Prueba',
+        contrasena: '12345678',
+        id_rol: 2, // psicologo
+        telefono: '3007654321',
+        edad: 40,
+        sexo: 'M',
+        ciudad: 'Medellín'
+      },
+      {
+        correo: 'usuario@test.com',
+        nombres: 'Usuario',
+        apellidos: 'Prueba',
+        contrasena: '12345678',
+        id_rol: 3, // usuario
+        telefono: '3009876543',
+        edad: 25,
+        sexo: 'M',
+        ciudad: 'Cali'
+      }
+    ];
+
+    for (const usuarioData of usuariosDeTest) {
+      // Verificar si el usuario ya existe
+      const usuarioExistente = await db
+        .select()
+        .from(schema.usuarios)
+        .where(eq(schema.usuarios.correo, usuarioData.correo))
+        .limit(1);
+
+      if (usuarioExistente.length === 0) {
+        // Hash password
+        const hashedPassword = await bcrypt.hash(usuarioData.contrasena, 10);
+
+        // Crear usuario
+        await db.insert(schema.usuarios).values({
+          correo: usuarioData.correo,
+          nombres: usuarioData.nombres,
+          apellidos: usuarioData.apellidos,
+          contrasena: hashedPassword,
+          id_rol: usuarioData.id_rol,
+          telefono: usuarioData.telefono,
+          edad: usuarioData.edad,
+          sexo: usuarioData.sexo,
+          ciudad: usuarioData.ciudad,
+        });
+
+        console.log(`✓ Usuario creado: ${usuarioData.correo}`);
+      } else {
+        console.log(`✓ Usuario ya existe: ${usuarioData.correo}`);
+      }
+    }
+
+    console.log('\n=== USUARIOS DE PRUEBA CREADOS ===');
+    console.log('Admin: admin@test.com / 12345678');
+    console.log('Psicólogo: psicologo@test.com / 12345678');
+    console.log('Usuario: usuario@test.com / 12345678');
+    console.log('==================================\n');
     
     console.log('Database seeded successfully');
   } catch (error) {

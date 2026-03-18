@@ -29,7 +29,15 @@ interface ChatResponse {
  */
 export const checkOllamaHealth = async (): Promise<boolean> => {
   try {
-    const response = await fetch(`${OLLAMA_API_URL}/api/tags`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5 segundos de timeout
+
+    const response = await fetch(`${OLLAMA_API_URL}/api/tags`, {
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeout);
+    
     if (!response.ok) return false;
     
     const data = await response.json();
@@ -91,10 +99,13 @@ export const downloadModel = async (): Promise<boolean> => {
 };
 
 /**
- * Envía una consulta a Ollama y obtiene la respuesta
+ * Consulta a Ollama con timeout de 30 segundos
  */
 export const queryOllama = async (prompt: string, systemPrompt?: string): Promise<string> => {
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30 segundos de timeout
+
     const messages = [];
     
     if (systemPrompt) {
@@ -118,7 +129,10 @@ export const queryOllama = async (prompt: string, systemPrompt?: string): Promis
           top_k: 40,
         }
       }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeout);
 
     if (!response.ok) {
       throw new Error(`Error en Ollama API: ${response.statusText}`);
@@ -126,7 +140,11 @@ export const queryOllama = async (prompt: string, systemPrompt?: string): Promis
 
     const data = await response.json();
     return data.message?.content || 'No se pudo generar respuesta';
-  } catch (error) {
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.error('Timeout: Ollama tardó más de 30 segundos en responder');
+      throw new Error('Ollama no responde. Por favor, intenta nuevamente.');
+    }
     console.error('Error consultando Ollama:', error);
     throw error;
   }
