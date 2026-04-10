@@ -2,14 +2,15 @@ import { Request, Response } from 'express';
 import { APIErrorResponse, APISuccessResponse } from '../shared/utils/api.utils';
 import {
   getPreguntasRegistroEmocionalService,
+  getPreguntasAleatoriosService,
   getRespuestasUsuarioPorFechaService,
   saveRespuestasRegistroEmocionalService,
 } from '../services/registro-emocional.service';
 
 export const getPreguntasRegistroEmocional = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const preguntas = await getPreguntasRegistroEmocionalService();
-    res.status(200).json(APISuccessResponse(preguntas, 'Preguntas de registro emocional obtenidas'));
+    const preguntas = await getPreguntasAleatoriosService();
+    res.status(200).json(APISuccessResponse(preguntas, 'Preguntas aleatorias de registro emocional obtenidas'));
   } catch (error) {
     console.error('Error obteniendo preguntas de registro emocional:', error);
     res.status(500).json(APIErrorResponse('Error interno del servidor'));

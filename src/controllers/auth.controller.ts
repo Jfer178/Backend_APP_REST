@@ -42,11 +42,12 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     }
 
     const userData = validationResult.data;
+    const correoNormalizado = userData.correo.toLowerCase().trim();
 
     // Check if user already exists
     const existingUser = await db.select()
       .from(usuarios)
-      .where(eq(usuarios.correo, userData.correo))
+      .where(eq(usuarios.correo, correoNormalizado))
       .limit(1);
 
     if (existingUser.length > 0) {
@@ -60,7 +61,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     // Create user - aseguramos que todos los campos requeridos están explícitamente establecidos
     const [newUser] = await db.insert(usuarios)
       .values({
-        correo: userData.correo,
+        correo: correoNormalizado,
         contrasena: hashedPassword,
         nombres: userData.nombres,
         apellidos: userData.apellidos,
@@ -113,10 +114,11 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
 
     const { correo, contrasena } = validationResult.data;
+    const correoNormalizado = correo.toLowerCase().trim();
 
     const results = await db.select()
       .from(usuarios)
-      .where(eq(usuarios.correo, correo))
+      .where(eq(usuarios.correo, correoNormalizado))
       .limit(1);
 
     if (results.length === 0) {
@@ -139,6 +141,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         break;
 
       case 2: rol = ROLES.PSICOLOGO.nombre;
+        break;
+
+      case 4: rol = ROLES.MODERADOR.nombre;
+        break;
+
+      case 5: rol = ROLES.INVITADO.nombre;
         break;
 
       default: rol = ROLES.USUARIO.nombre;

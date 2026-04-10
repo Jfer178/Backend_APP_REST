@@ -9,6 +9,7 @@ RUN npm install
 COPY tsconfig.json ./
 COPY tsconfig.build.json ./
 COPY drizzle.config.ts ./
+COPY drizzle/ ./drizzle/
 COPY src/ ./src/
 
 # Build application
@@ -23,8 +24,6 @@ RUN echo '#!/bin/sh' > /app/startup.sh && \
     echo 'echo "Database config: $DATABASE_URL"' >> /app/startup.sh && \
     echo 'echo "Waiting for database to be ready..."' >> /app/startup.sh && \
     echo 'sleep 10' >> /app/startup.sh && \
-    echo 'echo "Checking schema changes (db:generate)..."' >> /app/startup.sh && \
-    echo 'npm run db:generate' >> /app/startup.sh && \
     echo 'echo "Applying migrations (db:migrate)..."' >> /app/startup.sh && \
     echo 'node dist/db/migrate.js' >> /app/startup.sh && \
     echo 'echo "Starting the application..."' >> /app/startup.sh && \

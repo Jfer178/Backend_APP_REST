@@ -2,14 +2,14 @@ import { db } from '../db';
 import { registro_emocional, opciones_registro_emocional, preguntas_registro_emocional } from '../db/schema';
 import { eq, and, gte, lte, desc, isNull } from 'drizzle-orm';
 
-interface CalendarioData {
-  [fecha: string]: {
-    fecha: string;
-    promedio_emocional: number;
-    registros_realizados: number;
-    emociones: string[];
-  };
+interface CalendarioDiaData {
+  fecha: string;
+  promedio: number;
+  registros_realizados: number;
+  emociones: string[];
 }
+
+type CalendarioData = CalendarioDiaData[];
 
 interface RachasData {
   racha_actual: number;
@@ -37,6 +37,34 @@ interface ResumenDiaData {
     valor: number;
   }>;
 }
+
+const toDateKey = (value: unknown): string => {
+  if (value == null) return '';
+
+  if (value instanceof Date) {
+    const y = value.getUTCFullYear().toString().padStart(4, '0');
+    const m = (value.getUTCMonth() + 1).toString().padStart(2, '0');
+    const d = value.getUTCDate().toString().padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (raw.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    return raw.substring(0, 10);
+  }
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    const y = parsed.getUTCFullYear().toString().padStart(4, '0');
+    const m = (parsed.getUTCMonth() + 1).toString().padStart(2, '0');
+    const d = parsed.getUTCDate().toString().padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  return raw;
+};
 
 /**
  * Obtener calendario emocional con rango de fechas
@@ -71,31 +99,35 @@ export const getCalendarioEmocionalService = async (
         )
       );
 
-    const calendario: CalendarioData = {};
+    const calendarioMap: { [fecha: string]: CalendarioDiaData } = {};
 
     registros.forEach((registro) => {
-      const fecha = String(registro.fecha_dia);
-      if (!calendario[fecha]) {
-        calendario[fecha] = {
+      const fecha = toDateKey(registro.fecha_dia);
+      if (!fecha) return;
+      if (!calendarioMap[fecha]) {
+        calendarioMap[fecha] = {
           fecha,
-          promedio_emocional: 0,
+          promedio: 0,
           registros_realizados: 0,
           emociones: [],
         };
       }
 
-      calendario[fecha].registros_realizados += 1;
-      calendario[fecha].emociones.push(registro.nombre || 'Sin emoción');
+      calendarioMap[fecha].registros_realizados += 1;
+      calendarioMap[fecha].emociones.push(registro.nombre || 'Sin emoción');
     });
 
     // Calcular promedios
-    Object.keys(calendario).forEach((fecha) => {
-      const registrosDelDia = registros.filter((r) => String(r.fecha_dia) === fecha);
+    Object.keys(calendarioMap).forEach((fecha) => {
+      const registrosDelDia = registros.filter((r) => toDateKey(r.fecha_dia) === fecha);
       const suma = registrosDelDia.reduce((acc, r) => acc + (r.valor_emocional || 0), 0);
-      calendario[fecha].promedio_emocional = Math.round((suma / registrosDelDia.length) * 100) / 100;
+      calendarioMap[fecha].promedio = Math.round((suma / registrosDelDia.length) * 100) / 100;
     });
 
-    return calendario;
+    // Convertir a array ordenado por fecha
+    const calendarioArray = Object.values(calendarioMap).sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+    return calendarioArray;
   } catch (error) {
     console.error('Error en getCalendarioEmocionalService:', error);
     throw error;

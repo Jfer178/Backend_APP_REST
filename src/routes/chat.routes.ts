@@ -9,6 +9,7 @@ import {
   deleteChat, 
   chatConIA, 
   getHistorialChatIA,
+  detenerChatIA,
   chatConIAAvanzado,
   obtenerActividadesRecomendadas,
   obtenerEstadoPsicologicoUsuario
@@ -20,6 +21,7 @@ const router = Router();
 // ⚠️ RUTAS IA DEBEN IR PRIMERO (antes de /:chatId para evitar conflictos)
 router.post('/ia', authenticate, chatConIA);
 router.get('/ia/historial', authenticate, getHistorialChatIA);
+router.post('/ia/detener', authenticate, detenerChatIA);
 router.post('/ia/avanzado', authenticate, chatConIAAvanzado);
 router.get('/actividades/recomendadas', authenticate, obtenerActividadesRecomendadas);
 router.get('/estado-psicologico', authenticate, obtenerEstadoPsicologicoUsuario);

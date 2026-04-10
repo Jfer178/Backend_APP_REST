@@ -97,12 +97,69 @@ async function seed() {
     } else {
       console.log('Actividades already exist, skipping seed');
     }
+
+    // Seed de premios
+    const premiosExistentes = await db
+      .select({ id: schema.premios.id })
+      .from(schema.premios)
+      .limit(1);
+
+    if (premiosExistentes.length === 0) {
+      const premiosIniciales = [
+        {
+          nombre: 'Snack saludable',
+          descripcion: 'Canjeable en Bienestar Universitario por una opcion saludable.',
+          estrellas_requeridas: 20,
+          is_active: true,
+        },
+        {
+          nombre: 'Kit antiestres',
+          descripcion: 'Incluye libreta, stickers y elementos de apoyo emocional.',
+          estrellas_requeridas: 45,
+          is_active: true,
+        },
+        {
+          nombre: 'Clase de bienestar',
+          descripcion: 'Acceso prioritario a talleres y actividades de bienestar.',
+          estrellas_requeridas: 80,
+          is_active: true,
+        },
+        {
+          nombre: 'Pack premium bienestar',
+          descripcion: 'Beneficio especial para estudiantes constantes durante el mes.',
+          estrellas_requeridas: 120,
+          is_active: true,
+        },
+      ];
+
+      await db.insert(schema.premios).values(premiosIniciales);
+      console.log('Premios seeded successfully');
+    } else {
+      console.log('Premios already exist, skipping seed');
+    }
     
-    // Preguntas base (solo si no existen)
+    // Preguntas base (solo si no existen) - 20 preguntas psicológicas
     const preguntasBase = [
       '¿Cómo describirías tu estado de ánimo general durante la última semana?',
-      '¿Has experimentado dificultades para dormir en los últimos días?',
-      '¿Te has sentido capaz de concentrarte en tus actividades diarias?',
+      '¿Cómo te has sentido respecto al interés o motivación para hacer actividades?',
+      '¿Cómo ha sido la calidad de tu sueño recientemente?',
+      '¿Cómo describirías tu nivel de energía en el día a día?',
+      '¿Cómo percibes tu apetito en los últimos días?',
+      '¿Cómo te has sentido contigo mismo (autoestima, autovaloración)?',
+      '¿Cómo calificarías tu capacidad de concentración?',
+      '¿Cómo te has sentido en términos de calma o relajación?',
+      '¿Cómo describirías tu nivel de ansiedad o preocupación?',
+      '¿Cómo ha sido tu capacidad para controlar tus preocupaciones?',
+      '¿Cómo te has sentido respecto a la sensación de que algo malo podría pasar?',
+      '¿Cómo te has sentido al enfrentar situaciones que te generan estrés o miedo?',
+      '¿Cómo calificarías tu sensación de compañía o apoyo social?',
+      '¿Cómo te has sentido al manejar el estrés diario?',
+      '¿Cómo te has sentido en términos de motivación para tus actividades diarias?',
+      '¿Cómo calificarías tu satisfacción con la vida en general?',
+      '¿Cómo percibes tu manejo de emociones recientemente?',
+      '¿Cómo te has sentido respecto al apoyo de las personas que te rodean?',
+      '¿Cómo te has sentido respecto a tu visión del futuro (optimismo)?',
+      '¿Cómo calificarías tu capacidad para disfrutar momentos cotidianos?',
     ];
 
     const preguntasExistentes = await db
@@ -138,131 +195,35 @@ async function seed() {
       .limit(1);
 
     if (opcionesBaseExistentes.length === 0) {
-      const opcionesRegistroEmocionalBase = [
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[0])!,
-          nombre: 'Muy positivo',
-          descripcion: 'Te sentiste con energía y bienestar casi toda la semana',
-          url_imagen: '/images/registro-emocional/muy-positivo.png',
-          puntaje: 0,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[0])!,
-          nombre: 'Generalmente positivo',
-          descripcion: 'Predominó una sensación de bienestar con momentos normales',
-          url_imagen: '/images/registro-emocional/generalmente-positivo.png',
-          puntaje: 1,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[0])!,
-          nombre: 'Neutral',
-          descripcion: 'Tu estado emocional fue estable, sin cambios marcados',
-          url_imagen: '/images/registro-emocional/neutral.png',
-          puntaje: 2,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[0])!,
-          nombre: 'Algo negativo',
-          descripcion: 'Hubo varios momentos de malestar o desánimo',
-          url_imagen: '/images/registro-emocional/algo-negativo.png',
-          puntaje: 3,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[0])!,
-          nombre: 'Muy negativo',
-          descripcion: 'Predominó una sensación de malestar durante la semana',
-          url_imagen: '/images/registro-emocional/muy-negativo.png',
-          puntaje: 5,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[1])!,
-          nombre: 'No, duermo perfectamente',
-          descripcion: 'Descansas bien y no presentas interrupciones relevantes',
-          url_imagen: '/images/registro-emocional/dormir-sin-problemas.png',
-          puntaje: 0,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[1])!,
-          nombre: 'Ocasionalmente',
-          descripcion: 'Aparecen dificultades de sueño de forma esporádica',
-          url_imagen: '/images/registro-emocional/dormir-ocasionalmente.png',
-          puntaje: 1,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[1])!,
-          nombre: 'Con cierta frecuencia',
-          descripcion: 'El sueño se ha visto alterado en varias noches recientes',
-          url_imagen: '/images/registro-emocional/dormir-frecuente.png',
-          puntaje: 2,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[1])!,
-          nombre: 'Casi todas las noches',
-          descripcion: 'Las dificultades para dormir son casi diarias',
-          url_imagen: '/images/registro-emocional/dormir-casi-siempre.png',
-          puntaje: 4,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[1])!,
-          nombre: 'Todas las noches',
-          descripcion: 'Presentas problemas de sueño de forma constante',
-          url_imagen: '/images/registro-emocional/dormir-todas-las-noches.png',
-          puntaje: 5,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[2])!,
-          nombre: 'Sí, sin problemas',
-          descripcion: 'Mantienes la atención de forma adecuada en tus tareas',
-          url_imagen: '/images/registro-emocional/concentracion-sin-problemas.png',
-          puntaje: 0,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[2])!,
-          nombre: 'Generalmente sí',
-          descripcion: 'Te concentras bien la mayor parte del tiempo',
-          url_imagen: '/images/registro-emocional/concentracion-generalmente-si.png',
-          puntaje: 1,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[2])!,
-          nombre: 'A veces tengo dificultades',
-          descripcion: 'Tu capacidad de enfoque varía según el día o actividad',
-          url_imagen: '/images/registro-emocional/concentracion-a-veces.png',
-          puntaje: 2,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[2])!,
-          nombre: 'Frecuentemente me cuesta',
-          descripcion: 'Con frecuencia te cuesta mantener la atención',
-          url_imagen: '/images/registro-emocional/concentracion-frecuente.png',
-          puntaje: 4,
-          is_active: true,
-        },
-        {
-          pregunta_id: preguntasPorTexto.get(preguntasBase[2])!,
-          nombre: 'No logro concentrarme',
-          descripcion: 'Tu dificultad para concentrarte es persistente',
-          url_imagen: '/images/registro-emocional/concentracion-no-logro.png',
-          puntaje: 5,
-          is_active: true,
-        },
+      // Opciones estándar para TODAS las preguntas (Likert 0-4)
+      const opcionesRegistroEmocionalBase: any[] = [];
+      
+      // 5 opciones estándar para cada pregunta
+      const opcionesEstandar = [
+        { nombre: 'Muy mal', descripcion: 'Muy insatisfecho o muy negativo', puntaje: 0 },
+        { nombre: 'Mal', descripcion: 'Insatisfecho o algo negativo', puntaje: 1 },
+        { nombre: 'Normal', descripcion: 'Neutral, sin cambios marcados', puntaje: 2 },
+        { nombre: 'Bien', descripcion: 'Satisfecho, positivo', puntaje: 3 },
+        { nombre: 'Excelente', descripcion: 'Muy satisfecho, muy positivo', puntaje: 4 },
       ];
+      
+      // Crear opciones para cada pregunta
+      for (const preguntaTexto of preguntasBase) {
+        const preguntaId = preguntasPorTexto.get(preguntaTexto)!;
+        for (const opcion of opcionesEstandar) {
+          opcionesRegistroEmocionalBase.push({
+            pregunta_id: preguntaId,
+            nombre: opcion.nombre,
+            descripcion: opcion.descripcion,
+            url_imagen: '/images/registro-emocional/opcion.png',
+            puntaje: opcion.puntaje,
+            is_active: true,
+          });
+        }
+      }
 
       await db.insert(schema.opciones_registro_emocional).values(opcionesRegistroEmocionalBase);
-      console.log('Preguntas y opciones de registro emocional seeded successfully');
+      console.log('20 Preguntas y opciones de registro emocional seeded successfully');
     } else {
       console.log('Preguntas y opciones de registro emocional ya existen');
     }
@@ -305,6 +266,17 @@ async function seed() {
         edad: 25,
         sexo: 'M',
         ciudad: 'Cali'
+      },
+      {
+        correo: 'bienestar@test.com',
+        nombres: 'Bienestar',
+        apellidos: 'Universitario',
+        contrasena: '12345678',
+        id_rol: 4, // moderador (panel bienestar)
+        telefono: '3001112233',
+        edad: 30,
+        sexo: 'F',
+        ciudad: 'Bogotá'
       }
     ];
 
@@ -343,6 +315,7 @@ async function seed() {
     console.log('Admin: admin@test.com / 12345678');
     console.log('Psicólogo: psicologo@test.com / 12345678');
     console.log('Usuario: usuario@test.com / 12345678');
+    console.log('Bienestar: bienestar@test.com / 12345678');
     console.log('==================================\n');
     
     console.log('Database seeded successfully');

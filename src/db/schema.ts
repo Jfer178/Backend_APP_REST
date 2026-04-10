@@ -359,6 +359,70 @@ export const registro_actividades_usuariosrelations = relations(registro_activid
 }));
 
 // ================================
+// PREMIOS Y CANJES
+// ================================
+
+export const premios = pgTable('premios', {
+  id: serial('id').primaryKey(),
+
+  nombre: varchar('nombre', { length: 255 }).notNull(),
+  descripcion: text('descripcion'),
+  estrellas_requeridas: integer('estrellas_requeridas').notNull(),
+
+  is_active: boolean('is_active').default(true).notNull(),
+
+  created_at: timestamp('created_at').defaultNow().notNull(),
+  updated_at: timestamp('updated_at').defaultNow().notNull(),
+  deleted_at: timestamp('deleted_at'),
+}, (t) => ({
+  idxPremiosEstrellasRequeridas: index('idx_premios_estrellas_requeridas').on(t.estrellas_requeridas),
+  uqPremiosNombre: uniqueIndex('uq_premios_nombre').on(t.nombre),
+}));
+
+export const solicitudes_premios = pgTable('solicitudes_premios', {
+  id: serial('id').primaryKey(),
+
+  usuario_id: integer('usuario_id')
+    .references(() => usuarios.id, { onDelete: 'set null' }),
+
+  premio_id: integer('premio_id')
+    .references(() => premios.id, { onDelete: 'set null' }),
+
+  estado: varchar('estado', { length: 30 }).default('pendiente').notNull(),
+  estrellas_requeridas: integer('estrellas_requeridas').notNull(),
+
+  periodo_anio: integer('periodo_anio').notNull(),
+  periodo_mes: integer('periodo_mes').notNull(),
+
+  solicitado_en: timestamp('solicitado_en').defaultNow().notNull(),
+  procesado_en: timestamp('procesado_en'),
+  observaciones: text('observaciones'),
+
+  created_at: timestamp('created_at').defaultNow().notNull(),
+  updated_at: timestamp('updated_at').defaultNow().notNull(),
+  deleted_at: timestamp('deleted_at'),
+}, (t) => ({
+  idxSolicitudesPremiosUsuarioId: index('idx_solicitudes_premios_usuario_id').on(t.usuario_id),
+  idxSolicitudesPremiosPremioId: index('idx_solicitudes_premios_premio_id').on(t.premio_id),
+  idxSolicitudesPremiosPeriodo: index('idx_solicitudes_premios_periodo').on(t.periodo_anio, t.periodo_mes),
+}));
+
+export const premiosrelations = relations(premios, ({ many }) => ({
+  solicitudes: many(solicitudes_premios),
+}));
+
+export const solicitudes_premiosrelations = relations(solicitudes_premios, ({ one }) => ({
+  usuario: one(usuarios, {
+    fields: [solicitudes_premios.usuario_id],
+    references: [usuarios.id],
+  }),
+  premio: one(premios, {
+    fields: [solicitudes_premios.premio_id],
+    references: [premios.id],
+  }),
+}));
+
+// ================================
 // CHATS
 // ================================
 export const chats = pgTable('chats', {

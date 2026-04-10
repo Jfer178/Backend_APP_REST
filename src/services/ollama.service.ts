@@ -24,6 +24,86 @@ interface ChatResponse {
   timestamp: string;
 }
 
+const MENSAJE_CRITICO_FALLBACK =
+  'Gracias por contarmelo. Lo que estas viviendo es importante y no estas solo. Te recomiendo contactar ahora mismo al equipo de Salvavidas o a un profesional de confianza para acompanarte de inmediato.';
+
+const RESPUESTAS_DESECHABLES = [
+  'no puedo asistir',
+  'no puedo ayudarte con eso',
+  'como noa, no puedo',
+  'no puedo apoyar en eso',
+  'no puedo responder a eso',
+  'fuera de mi alcance',
+  'no tengo permitido',
+  'hay algo mas en lo que pueda apoyarte hoy',
+];
+
+const detectarRiesgoEnTexto = (texto: string): boolean => {
+  const normalizado = texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  const claves = [
+    'suicid',
+    'matarme',
+    'me quiero morir',
+    'no quiero vivir',
+    'autoles',
+    'hacerme dano',
+    'lastimarme',
+    'cortarme',
+  ];
+
+  return claves.some((clave) => normalizado.includes(clave));
+};
+
+const normalizar = (texto: string): string =>
+  texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const esRespuestaDesechable = (respuesta: string): boolean => {
+  const r = normalizar(respuesta);
+  return RESPUESTAS_DESECHABLES.some((patron) => r.includes(patron));
+};
+
+const construirRespuestaFallback = (mensaje: string): string => {
+  if (detectarRiesgoEnTexto(mensaje)) {
+    return MENSAJE_CRITICO_FALLBACK;
+  }
+
+  const normalizado = normalizar(mensaje);
+
+  if (
+    normalizado.includes('que me recomiendas') ||
+    normalizado.includes('que recomiendas') ||
+    normalizado.includes('me siento triste') ||
+    normalizado.includes('estoy triste')
+  ) {
+    return 'Gracias por contarmelo. Si te parece, hagamos algo simple ahora: 1) respira 4-4-6 por 2 minutos, 2) toma agua y cambia de lugar 5 minutos, 3) escribe en una nota que necesitas hoy. Si quieres, me quedo contigo y lo hacemos paso a paso.';
+  }
+
+  if (
+    normalizado.includes('mierda') ||
+    normalizado.includes('estupido') ||
+    normalizado.includes('idiota') ||
+    normalizado.includes('pendej')
+  ) {
+    return 'Siento si algo de lo que dije te hizo sentir peor. Quiero ayudarte de verdad. Si te parece, empezamos de nuevo: que fue lo que mas te dolio hoy?';
+  }
+
+  const plantillas = [
+    'Te leo. Gracias por abrirte conmigo. Si quieres, podemos ir paso a paso con lo que te esta pasando hoy.',
+    'Estoy aqui contigo. Cuentame un poco mas: que fue lo mas pesado de tu dia?',
+    'Gracias por confiar en mi. Podemos hablar de eso y buscar algo pequeno que te ayude a sentirte un poco mejor ahora.',
+  ];
+
+  const indice = Math.abs(mensaje.length) % plantillas.length;
+  return plantillas[indice];
+};
+
 /**
  * Verifica si Ollama está disponible y el modelo está cargado
  */
@@ -312,32 +392,45 @@ export const analizarRespuestasOllama = async (
  */
 export const chatWithOllama = async (mensaje: string, contexto?: string): Promise<ChatResponse> => {
   try {
-    const systemPrompt = `Eres un asistente terapéutico especializado en salud mental y bienestar emocional. Tu función es brindar apoyo conversacional empático y profesional, centrado exclusivamente en temas de salud mental, emociones y bienestar personal. 
+    const systemPrompt = `Eres NOA, un amigo virtual de confianza que brinda acompanamiento emocional a estudiantes.
 
-IMPORTANTE: 
-- Solo responde sobre temas relacionados con salud mental, emociones, bienestar personal y desarrollo personal
-- Si el usuario pregunta sobre otros temas (programación, tareas académicas, tecnología, etc.), redirige gentilmente hacia temas emocionales
-- Mantén un tono cálido, empático y profesional
-- Si detectas signos de crisis o pensamientos de autolesión, recomienda buscar ayuda profesional inmediatamente
-- Evita dar diagnósticos clínicos específicos
-- Sé conservador y empático en tus respuestas`;
+Reglas de estilo obligatorias:
+- Responde en espanol con tono humano, calido y cercano.
+- Comienza validando la emocion del usuario en una frase breve.
+- Responde de forma conectada a lo que la persona dijo (no cambies de tema).
+- Si el usuario pide ayuda concreta, entrega 2 o 3 sugerencias practicas y realistas.
+- Si el usuario esta molesto o usa insultos, mantente sereno, repara el vinculo y continua apoyando.
+- Evita respuestas roboticas o repetitivas.
+- Limita la respuesta a un maximo de 90 palabras.
+
+IMPORTANTE:
+- Mantente empatico, claro y respetuoso.
+- Evita diagnosticos clinicos o indicaciones medicas.
+- Si detectas riesgo de autolesion o crisis grave, prioriza contencion y sugiere apoyo profesional inmediato.
+- Da respuestas utiles, concretas y humanas.`;
     
     let prompt = mensaje;
     if (contexto) {
       prompt = `Contexto: ${contexto}\n\nPregunta: ${mensaje}`;
     }
 
-    const respuesta = await queryOllama(prompt, systemPrompt);
+    const respuestaCruda = await queryOllama(prompt, systemPrompt);
+    const respuesta = respuestaCruda.trim();
+
+    const usarFallback =
+      !respuesta ||
+      respuesta.length < 18 ||
+      esRespuestaDesechable(respuesta);
     
     return {
-      respuesta,
+      respuesta: usarFallback ? construirRespuestaFallback(mensaje) : respuesta,
       timestamp: new Date().toISOString()
     };
   } catch (error) {
     console.error('Error en chat con Ollama:', error);
     
     return {
-      respuesta: 'Lo siento, no pude procesar tu mensaje en este momento. Por favor, intenta nuevamente.',
+      respuesta: construirRespuestaFallback(mensaje),
       timestamp: new Date().toISOString()
     };
   }

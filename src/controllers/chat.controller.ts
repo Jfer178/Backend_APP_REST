@@ -18,6 +18,216 @@ const chatIASchema = z.object({
   contexto: z.string().optional()
 });
 
+const PALABRAS_ALERTA_CRITICA = [
+  'suicid',
+  'quitarme la vida',
+  'no quiero vivir',
+  'matarme',
+  'autoles',
+  'hacerme dano',
+  'hacerme da\u00f1o',
+  'lastimarme',
+  'cortarme',
+  'sobredosis',
+  'me quiero morir',
+  'sin salida',
+  'crisis',
+  'no aguanto mas',
+  'no aguanto m\u00e1s',
+];
+
+const normalizarTexto = (texto: string) =>
+  texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const detectarAlertaCritica = (mensaje: string) => {
+  const mensajeNormalizado = normalizarTexto(mensaje);
+  const coincidencias = PALABRAS_ALERTA_CRITICA.filter((palabra) =>
+    mensajeNormalizado.includes(palabra),
+  );
+
+  return {
+    esCritico: coincidencias.length > 0,
+    nivel: coincidencias.length > 1 ? 'critico' : coincidencias.length === 1 ? 'alto' : 'normal',
+    coincidencias,
+  };
+};
+
+const getOrCreateIAChat = async (usuarioId: number): Promise<number> => {
+  const [chatActivo] = await db
+    .select({ id: schema.chats.id })
+    .from(schema.chats)
+    .where(
+      and(
+        eq(schema.chats.estudiante_id, usuarioId),
+        eq(schema.chats.isSendByAi, true),
+        eq(schema.chats.is_active, true),
+        isNull(schema.chats.psicologo_id),
+      ),
+    )
+    .orderBy(desc(schema.chats.ultima_actividad))
+    .limit(1);
+
+  if (chatActivo?.id) {
+    return chatActivo.id;
+  }
+
+  const [creado] = await db
+    .insert(schema.chats)
+    .values({
+      estudiante_id: usuarioId,
+      psicologo_id: null,
+      iniciado_en: new Date(),
+      ultima_actividad: new Date(),
+      is_active: true,
+      isSendByAi: true,
+    })
+    .returning({ id: schema.chats.id });
+
+  return creado.id;
+};
+
+const guardarInteraccionIA = async (params: {
+  chatId: number;
+  usuarioId: number;
+  mensajeUsuario: string;
+  respuestaIA: string;
+}) => {
+  await db.insert(schema.mensajes_chat).values([
+    {
+      chat_id: params.chatId,
+      usuario_id: params.usuarioId,
+      mensaje: params.mensajeUsuario,
+      enviado_en: new Date(),
+    },
+    {
+      chat_id: params.chatId,
+      usuario_id: null,
+      mensaje: params.respuestaIA,
+      enviado_en: new Date(),
+    },
+  ]);
+
+  await db
+    .update(schema.chats)
+    .set({ ultima_actividad: new Date(), isSendByAi: true })
+    .where(eq(schema.chats.id, params.chatId));
+};
+
+const construirConsejosBasicos = (texto: string): string[] => {
+  const t = normalizarTexto(texto);
+  const consejos = [
+    'Haz una pausa corta de respiracion: inhala 4 segundos, sostén 4 y exhala 6.',
+    'Escribe en una nota una emocion y una necesidad concreta para hoy.',
+    'Habla con una persona de confianza durante al menos 10 minutos.',
+  ];
+
+  if (t.includes('ansiedad') || t.includes('nerv')) {
+    consejos[0] = 'Prueba respiracion cuadrada durante 2 minutos para bajar la activacion.';
+  }
+
+  if (t.includes('triste') || t.includes('solo')) {
+    consejos[1] = 'Valida como te sientes sin juzgarte y define una accion pequena de autocuidado hoy.';
+  }
+
+  if (t.includes('cans') || t.includes('agot')) {
+    consejos[2] = 'Prioriza descanso breve y reduce una carga no esencial del dia.';
+  }
+
+  return consejos;
+};
+
+const buscarProfesionalSalvavidas = async (): Promise<number | null> => {
+  const [moderador] = await db
+    .select({ id: schema.usuarios.id })
+    .from(schema.usuarios)
+    .where(and(eq(schema.usuarios.id_rol, 4), eq(schema.usuarios.is_active, true)))
+    .limit(1);
+
+  if (moderador?.id) {
+    return moderador.id;
+  }
+
+  const [psicologo] = await db
+    .select({ id: schema.usuarios.id })
+    .from(schema.usuarios)
+    .where(and(eq(schema.usuarios.id_rol, 2), eq(schema.usuarios.is_active, true)))
+    .limit(1);
+
+  return psicologo?.id ?? null;
+};
+
+const escalarASalvavidas = async (params: {
+  usuarioId: number;
+  mensajeUsuario: string;
+  respuestaIA: string;
+}): Promise<{ chatId: number | null; profesionalId: number | null }> => {
+  const profesionalId = await buscarProfesionalSalvavidas();
+
+  if (!profesionalId) {
+    return { chatId: null, profesionalId: null };
+  }
+
+  const [chatExistente] = await db
+    .select({ id: schema.chats.id })
+    .from(schema.chats)
+    .where(
+      and(
+        eq(schema.chats.estudiante_id, params.usuarioId),
+        eq(schema.chats.psicologo_id, profesionalId),
+        eq(schema.chats.is_active, true),
+      ),
+    )
+    .orderBy(desc(schema.chats.ultima_actividad))
+    .limit(1);
+
+  let chatId = chatExistente?.id;
+
+  if (!chatId) {
+    const [chatCreado] = await db
+      .insert(schema.chats)
+      .values({
+        estudiante_id: params.usuarioId,
+        psicologo_id: profesionalId,
+        iniciado_en: new Date(),
+        ultima_actividad: new Date(),
+        is_active: true,
+        isSendByAi: true,
+      })
+      .returning({ id: schema.chats.id });
+
+    chatId = chatCreado?.id;
+  }
+
+  if (!chatId) {
+    return { chatId: null, profesionalId };
+  }
+
+  await db.insert(schema.mensajes_chat).values([
+    {
+      chat_id: chatId,
+      usuario_id: params.usuarioId,
+      mensaje: `[ALERTA NOA] Mensaje detectado como riesgo: ${params.mensajeUsuario}`,
+      enviado_en: new Date(),
+    },
+    {
+      chat_id: chatId,
+      usuario_id: profesionalId,
+      mensaje: `[ALERTA NOA] Respuesta inicial enviada al usuario: ${params.respuestaIA}`,
+      enviado_en: new Date(),
+    },
+  ]);
+
+  await db
+    .update(schema.chats)
+    .set({ ultima_actividad: new Date(), isSendByAi: true })
+    .where(eq(schema.chats.id, chatId));
+
+  return { chatId, profesionalId };
+};
+
 /**
  * Get all chats for the authenticated user
  */
@@ -60,20 +270,81 @@ export const chatConIA = async (req: AuthRequest, res: Response): Promise<void> 
     }
 
     const { mensaje, contexto } = validationResult.data;
+    const alerta = detectarAlertaCritica(mensaje);
+    const chatIAId = await getOrCreateIAChat(req.user.id);
+
+    if (alerta.esCritico) {
+      const respuestaCritica =
+        'Gracias por decirme como te sientes. Lo que estas viviendo es importante y no estas solo. Voy a conectarte de inmediato con Salvavidas para que un profesional pueda acompanarte ahora mismo.';
+
+      await guardarInteraccionIA({
+        chatId: chatIAId,
+        usuarioId: req.user.id,
+        mensajeUsuario: mensaje,
+        respuestaIA: respuestaCritica,
+      });
+
+      const escalamiento = await escalarASalvavidas({
+        usuarioId: req.user.id,
+        mensajeUsuario: mensaje,
+        respuestaIA: respuestaCritica,
+      });
+
+      res.status(201).json(APISuccessResponse({
+        usuario_id: req.user.id,
+        chat_id: chatIAId,
+        mensaje_usuario: mensaje,
+        respuesta_ia: respuestaCritica,
+        timestamp: new Date().toISOString(),
+        requiere_salvavidas: true,
+        nivel_alerta: alerta.nivel,
+        coincidencias_alerta: alerta.coincidencias,
+        chat_salvavidas_id: escalamiento.chatId,
+        psicologo_asignado_id: escalamiento.profesionalId,
+        mensaje_sistema:
+          'Detectamos una situacion de riesgo. Ya derivamos tu caso a Salvavidas para atencion profesional.',
+      }, 'Chat completado exitosamente'));
+      return;
+    }
+
+    const contextoNOA = [
+      'Tu nombre es NOA y eres un amigo virtual de apoyo emocional para estudiantes.',
+      'Responde con tono cercano, natural y empatico, como un companero de confianza.',
+      'Primero valida en una frase como se siente la persona y luego responde exactamente a lo que dijo.',
+      'Si la persona pide recomendaciones, ofrece 2 o 3 acciones pequenas y practicas para hacer hoy.',
+      'Si la persona esta molesta o usa insultos, manten calma, muestra tacto y continua el apoyo sin confrontar.',
+      'Puedes hablar de temas cotidianos mientras mantengas una orientacion de bienestar emocional.',
+      'No des diagnosticos ni indicaciones medicas.',
+      'Si detectas crisis emocional, responde con contencion y recomienda hablar con psicologia de inmediato.',
+    ].join(' ');
 
     try {
       const respuestaIA = await Promise.race([
-        chatWithOllama(mensaje, contexto),
+        chatWithOllama(mensaje, [contextoNOA, contexto].filter(Boolean).join(' | ')),
         new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Timeout')), 35000)
         )
       ]) as any;
-      
+
+      await guardarInteraccionIA({
+        chatId: chatIAId,
+        usuarioId: req.user.id,
+        mensajeUsuario: mensaje,
+        respuestaIA: respuestaIA.respuesta,
+      });
+
       res.status(201).json(APISuccessResponse({
         usuario_id: req.user.id,
+        chat_id: chatIAId,
         mensaje_usuario: mensaje,
         respuesta_ia: respuestaIA.respuesta,
-        timestamp: respuestaIA.timestamp
+        timestamp: respuestaIA.timestamp,
+        requiere_salvavidas: false,
+        nivel_alerta: 'normal',
+        coincidencias_alerta: [],
+        chat_salvavidas_id: null,
+        psicologo_asignado_id: null,
+        mensaje_sistema: null,
       }, 'Chat completado exitosamente'));
 
     } catch (aiError: any) {
@@ -102,11 +373,56 @@ export const getHistorialChatIA = async (req: AuthRequest, res: Response): Promi
       return;
     }
 
-    // For now, return empty history as we're not storing AI chats
-    // This can be implemented later if needed
+    const chatsIA = await db
+      .select({
+        id: schema.chats.id,
+        iniciado_en: schema.chats.iniciado_en,
+        ultima_actividad: schema.chats.ultima_actividad,
+        finalizado_en: schema.chats.finalizado_en,
+        is_active: schema.chats.is_active,
+      })
+      .from(schema.chats)
+      .where(
+        and(
+          eq(schema.chats.estudiante_id, req.user.id),
+          eq(schema.chats.isSendByAi, true),
+        ),
+      )
+      .orderBy(desc(schema.chats.ultima_actividad));
+
+    const historial = await Promise.all(
+      chatsIA.map(async (chat) => {
+        const mensajes = await db
+          .select({
+            id: schema.mensajes_chat.id,
+            mensaje: schema.mensajes_chat.mensaje,
+            enviado_en: schema.mensajes_chat.enviado_en,
+          })
+          .from(schema.mensajes_chat)
+          .where(eq(schema.mensajes_chat.chat_id, chat.id))
+          .orderBy(desc(schema.mensajes_chat.enviado_en));
+
+        const ultimo = mensajes[0] ?? null;
+        const previewBase = ultimo?.mensaje ?? 'Conversacion con NOA';
+        const preview = previewBase.length > 90
+          ? `${previewBase.slice(0, 90)}...`
+          : previewBase;
+
+        return {
+          chat_id: chat.id,
+          iniciado_en: chat.iniciado_en,
+          ultima_actividad: chat.ultima_actividad,
+          finalizado_en: chat.finalizado_en,
+          is_active: chat.is_active,
+          total_mensajes: mensajes.length,
+          preview,
+        };
+      }),
+    );
+
     res.status(200).json(APISuccessResponse({
       usuario_id: req.user.id,
-      historial: []
+      historial,
     }, 'Historial de chat obtenido'));
 
   } catch (error) {
@@ -591,6 +907,92 @@ export const obtenerEstadoPsicologicoUsuario = async (req: AuthRequest, res: Res
 
   } catch (error) {
     console.error('Error obteniendo estado psicológico:', error);
+    res.status(500).json(APIErrorResponse('Error interno del servidor'));
+  }
+};
+
+/**
+ * Detener chat IA activo y devolver retroalimentacion breve
+ */
+export const detenerChatIA = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user?.id) {
+      res.status(401).json(APIErrorResponse('Usuario no autenticado'));
+      return;
+    }
+
+    const [chatActivo] = await db
+      .select({ id: schema.chats.id })
+      .from(schema.chats)
+      .where(
+        and(
+          eq(schema.chats.estudiante_id, req.user.id),
+          eq(schema.chats.isSendByAi, true),
+          eq(schema.chats.is_active, true),
+          isNull(schema.chats.psicologo_id),
+        ),
+      )
+      .orderBy(desc(schema.chats.ultima_actividad))
+      .limit(1);
+
+    if (!chatActivo?.id) {
+      res.status(200).json(
+        APISuccessResponse(
+          {
+            chat_id: null,
+            retroalimentacion:
+              'Hoy no hay una sesion activa con NOA, pero recuerda que puedes volver cuando lo necesites.',
+            consejos: construirConsejosBasicos(''),
+          },
+          'No habia chat activo',
+        ),
+      );
+      return;
+    }
+
+    const mensajes = await db
+      .select({
+        mensaje: schema.mensajes_chat.mensaje,
+        usuario_id: schema.mensajes_chat.usuario_id,
+      })
+      .from(schema.mensajes_chat)
+      .where(eq(schema.mensajes_chat.chat_id, chatActivo.id))
+      .orderBy(desc(schema.mensajes_chat.enviado_en))
+      .limit(8);
+
+    const mensajesUsuario = mensajes
+      .filter((m) => m.usuario_id === req.user?.id)
+      .map((m) => m.mensaje);
+
+    const textoUsuario = mensajesUsuario.join(' ');
+    const consejos = construirConsejosBasicos(textoUsuario);
+
+    const retroalimentacion = mensajesUsuario.length > 0
+      ? 'Gracias por compartir este espacio con NOA. Hoy expresaste lo que sentias y eso ya es un paso importante en tu proceso.'
+      : 'Gracias por abrir el chat. Aunque haya sido breve, volver cuando lo necesites tambien es autocuidado.';
+
+    await db
+      .update(schema.chats)
+      .set({
+        is_active: false,
+        finalizado_en: new Date(),
+        ultima_actividad: new Date(),
+      })
+      .where(eq(schema.chats.id, chatActivo.id));
+
+    res.status(200).json(
+      APISuccessResponse(
+        {
+          chat_id: chatActivo.id,
+          retroalimentacion,
+          consejos,
+          total_mensajes_usuario: mensajesUsuario.length,
+        },
+        'Sesion finalizada con retroalimentacion',
+      ),
+    );
+  } catch (error) {
+    console.error('Error deteniendo chat IA:', error);
     res.status(500).json(APIErrorResponse('Error interno del servidor'));
   }
 };
