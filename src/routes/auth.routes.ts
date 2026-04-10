@@ -20,4 +20,11 @@ router.post('/register', authController.register);
  */
 router.post('/login', authController.login);
 
+/**
+ * @route POST /api/auth/recover-password
+ * @desc Recover and update user password
+ * @access Public
+ */
+router.post('/recover-password', authController.recoverPassword);
+
 export default router; 

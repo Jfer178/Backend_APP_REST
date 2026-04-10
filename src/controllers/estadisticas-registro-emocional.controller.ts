@@ -6,6 +6,8 @@ import {
   getRachasService,
   getEstadisticasService,
   getResumenDiaService,
+  getPantallaPersonalService,
+  activarRachaDiariaService,
 } from '../services/estadisticas-registro-emocional.service';
 
 /**
@@ -122,5 +124,52 @@ export const getResumenDia = async (req: AuthRequest, res: Response): Promise<vo
   } catch (error) {
     console.error('Error en getResumenDia:', error);
     res.status(500).json(APIErrorResponse('Error al obtener resumen del día'));
+  }
+};
+
+/**
+ * Obtener datos completos para la pantalla personal
+ */
+export const getPantallaPersonal = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const usuarioId = req.user?.id;
+
+    if (!usuarioId) {
+      res.status(401).json(APIErrorResponse('Usuario no autenticado'));
+      return;
+    }
+
+    const data = await getPantallaPersonalService(usuarioId);
+    res.status(200).json(APISuccessResponse(data, 'Pantalla personal obtenida correctamente'));
+  } catch (error) {
+    console.error('Error en getPantallaPersonal:', error);
+    res.status(500).json(APIErrorResponse('Error al obtener datos de pantalla personal'));
+  }
+};
+
+/**
+ * Activar racha diaria y otorgar una estrella del día
+ */
+export const activarRachaDiaria = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const usuarioId = req.user?.id;
+
+    if (!usuarioId) {
+      res.status(401).json(APIErrorResponse('Usuario no autenticado'));
+      return;
+    }
+
+    const data = await activarRachaDiariaService(usuarioId);
+    res.status(200).json(APISuccessResponse(data, data.mensaje));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error al activar racha diaria';
+
+    if (message.toLowerCase().includes('debes completar tu registro emocional')) {
+      res.status(409).json(APIErrorResponse(message));
+      return;
+    }
+
+    console.error('Error en activarRachaDiaria:', error);
+    res.status(500).json(APIErrorResponse('Error al activar racha diaria'));
   }
 };

@@ -1,15 +1,21 @@
 import { db } from '../db';
-import { registro_emocional, opciones_registro_emocional, preguntas_registro_emocional } from '../db/schema';
-import { eq, and, gte, lte, desc, isNull } from 'drizzle-orm';
+import {
+  registro_emocional,
+  opciones_registro_emocional,
+  preguntas_registro_emocional,
+  opciones_registro_actividades,
+  registro_actividades_usuarios,
+} from '../db/schema';
+import { eq, and, gte, lte, isNull, sql } from 'drizzle-orm';
 
-interface CalendarioData {
-  [fecha: string]: {
-    fecha: string;
-    promedio_emocional: number;
-    registros_realizados: number;
-    emociones: string[];
-  };
+interface CalendarioDiaData {
+  fecha: string;
+  promedio: number;
+  registros_realizados: number;
+  emociones: string[];
 }
+
+type CalendarioData = CalendarioDiaData[];
 
 interface RachasData {
   racha_actual: number;
@@ -37,6 +43,167 @@ interface ResumenDiaData {
     valor: number;
   }>;
 }
+
+interface PantallaPersonalDia {
+  fecha: string;
+  dia: string;
+  registro_emocional: boolean;
+  estrella_activada: boolean;
+}
+
+interface PantallaPersonalData {
+  dias_trabajados_en_mi: number;
+  racha_actual: number;
+  racha_maxima_historica: number;
+  dias_sin_registrar: number;
+  ultimo_registro: string | null;
+  estrella_hoy_activada: boolean;
+  puede_activar_estrella_hoy: boolean;
+  estrellas_racha_total: number;
+  estrellas_racha_mes_actual: number;
+  estado_animo_mas_frecuente: {
+    nombre: string;
+    total: number;
+  } | null;
+  emociones_frecuentes: Array<{
+    nombre: string;
+    total: number;
+  }>;
+  evolucion_estado_animo: {
+    tendencia: 'subiendo' | 'estable' | 'bajando';
+    promedio_ultimos_7_dias: number;
+    promedio_7_dias_anteriores: number;
+    serie_ultimos_7_dias: Array<{
+      fecha: string;
+      promedio: number;
+    }>;
+  };
+  semana_actual: PantallaPersonalDia[];
+}
+
+interface ActivarRachaDiariaData {
+  activada: boolean;
+  mensaje: string;
+  fecha: string;
+  estrella_otorgada: number;
+  total_estrellas_racha: number;
+  estrellas_racha_mes_actual: number;
+}
+
+const NOMBRE_OPCION_RACHA_DIARIA = 'Racha diaria emocional';
+
+const toDateKey = (value: unknown): string => {
+  if (value == null) return '';
+
+  if (value instanceof Date) {
+    const y = value.getUTCFullYear().toString().padStart(4, '0');
+    const m = (value.getUTCMonth() + 1).toString().padStart(2, '0');
+    const d = value.getUTCDate().toString().padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (raw.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    return raw.substring(0, 10);
+  }
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    const y = parsed.getUTCFullYear().toString().padStart(4, '0');
+    const m = (parsed.getUTCMonth() + 1).toString().padStart(2, '0');
+    const d = parsed.getUTCDate().toString().padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  return raw;
+};
+
+const getTodayIso = (): string => {
+  return new Date().toISOString().slice(0, 10);
+};
+
+const toIsoDate = (date: Date): string => {
+  const y = date.getFullYear();
+  const m = (date.getMonth() + 1).toString().padStart(2, '0');
+  const d = date.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const inicioYFinMesActual = () => {
+  const now = new Date();
+  const inicio = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const fin = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
+  return { inicio, fin };
+};
+
+const getTopEmociones = (emociones: Record<string, number>) => {
+  return Object.entries(emociones)
+    .sort((a, b) => b[1] - a[1])
+    .map(([nombre, total]) => ({ nombre, total }));
+};
+
+const ensureRachaDiariaOptionId = async (): Promise<number> => {
+  const [existing] = await db
+    .select({ id: opciones_registro_actividades.id })
+    .from(opciones_registro_actividades)
+    .where(
+      and(
+        eq(opciones_registro_actividades.nombre, NOMBRE_OPCION_RACHA_DIARIA),
+        isNull(opciones_registro_actividades.deleted_at)
+      )
+    )
+    .limit(1);
+
+  if (existing?.id) {
+    return existing.id;
+  }
+
+  const [inserted] = await db
+    .insert(opciones_registro_actividades)
+    .values({
+      nombre: NOMBRE_OPCION_RACHA_DIARIA,
+      descripcion: 'Estrella diaria por completar y activar tu registro emocional',
+      url_imagen: 'assets/images/star.png',
+    })
+    .returning({ id: opciones_registro_actividades.id });
+
+  return inserted.id;
+};
+
+const getRachaStarsTotals = async (usuarioId: number, opcionRachaId: number) => {
+  const { inicio, fin } = inicioYFinMesActual();
+
+  const [totalResult] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(registro_actividades_usuarios)
+    .where(
+      and(
+        eq(registro_actividades_usuarios.usuario_id, usuarioId),
+        eq(registro_actividades_usuarios.opcion_id, opcionRachaId),
+        isNull(registro_actividades_usuarios.deleted_at)
+      )
+    );
+
+  const [mesActualResult] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(registro_actividades_usuarios)
+    .where(
+      and(
+        eq(registro_actividades_usuarios.usuario_id, usuarioId),
+        eq(registro_actividades_usuarios.opcion_id, opcionRachaId),
+        gte(registro_actividades_usuarios.fecha, inicio),
+        lte(registro_actividades_usuarios.fecha, fin),
+        isNull(registro_actividades_usuarios.deleted_at)
+      )
+    );
+
+  return {
+    total: Number(totalResult?.total ?? 0),
+    mesActual: Number(mesActualResult?.total ?? 0),
+  };
+};
 
 /**
  * Obtener calendario emocional con rango de fechas
@@ -71,31 +238,35 @@ export const getCalendarioEmocionalService = async (
         )
       );
 
-    const calendario: CalendarioData = {};
+    const calendarioMap: { [fecha: string]: CalendarioDiaData } = {};
 
     registros.forEach((registro) => {
-      const fecha = String(registro.fecha_dia);
-      if (!calendario[fecha]) {
-        calendario[fecha] = {
+      const fecha = toDateKey(registro.fecha_dia);
+      if (!fecha) return;
+      if (!calendarioMap[fecha]) {
+        calendarioMap[fecha] = {
           fecha,
-          promedio_emocional: 0,
+          promedio: 0,
           registros_realizados: 0,
           emociones: [],
         };
       }
 
-      calendario[fecha].registros_realizados += 1;
-      calendario[fecha].emociones.push(registro.nombre || 'Sin emoción');
+      calendarioMap[fecha].registros_realizados += 1;
+      calendarioMap[fecha].emociones.push(registro.nombre || 'Sin emoción');
     });
 
     // Calcular promedios
-    Object.keys(calendario).forEach((fecha) => {
-      const registrosDelDia = registros.filter((r) => String(r.fecha_dia) === fecha);
+    Object.keys(calendarioMap).forEach((fecha) => {
+      const registrosDelDia = registros.filter((r) => toDateKey(r.fecha_dia) === fecha);
       const suma = registrosDelDia.reduce((acc, r) => acc + (r.valor_emocional || 0), 0);
-      calendario[fecha].promedio_emocional = Math.round((suma / registrosDelDia.length) * 100) / 100;
+      calendarioMap[fecha].promedio = Math.round((suma / registrosDelDia.length) * 100) / 100;
     });
 
-    return calendario;
+    // Convertir a array ordenado por fecha
+    const calendarioArray = Object.values(calendarioMap).sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+    return calendarioArray;
   } catch (error) {
     console.error('Error en getCalendarioEmocionalService:', error);
     throw error;
@@ -306,4 +477,202 @@ export const getResumenDiaService = async (usuarioId: number, fecha: string): Pr
     console.error('Error en getResumenDiaService:', error);
     throw error;
   }
+};
+
+export const getPantallaPersonalService = async (
+  usuarioId: number,
+): Promise<PantallaPersonalData> => {
+  const [rachas, estadisticas] = await Promise.all([
+    getRachasService(usuarioId),
+    getEstadisticasService(usuarioId),
+  ]);
+
+  const topEmociones = getTopEmociones(estadisticas.emociones_mas_frecuentes);
+  const estadoAnimoMasFrecuente = topEmociones.length
+    ? topEmociones[0]
+    : null;
+
+  const hoy = new Date();
+  const hoyIso = toIsoDate(hoy);
+  const diaSemana = (hoy.getDay() + 6) % 7;
+  const inicioSemana = new Date(hoy);
+  inicioSemana.setDate(hoy.getDate() - diaSemana);
+  const finSemana = new Date(inicioSemana);
+  finSemana.setDate(inicioSemana.getDate() + 6);
+
+  const [registrosSemana, diasTrabajadosRows] = await Promise.all([
+    db
+      .select({ fecha_dia: registro_emocional.fecha_dia })
+      .from(registro_emocional)
+      .where(
+        and(
+          eq(registro_emocional.usuario_id, usuarioId),
+          gte(registro_emocional.fecha_dia, toIsoDate(inicioSemana)),
+          lte(registro_emocional.fecha_dia, toIsoDate(finSemana)),
+          isNull(registro_emocional.deleted_at)
+        )
+      ),
+    db
+      .select({ total: sql<number>`count(distinct ${registro_emocional.fecha_dia})` })
+      .from(registro_emocional)
+      .where(
+        and(
+          eq(registro_emocional.usuario_id, usuarioId),
+          isNull(registro_emocional.deleted_at)
+        )
+      ),
+  ]);
+
+  const opcionRachaId = await ensureRachaDiariaOptionId();
+
+  const activacionesSemanaRows = await db
+    .select({ fecha: registro_actividades_usuarios.fecha })
+    .from(registro_actividades_usuarios)
+    .where(
+      and(
+        eq(registro_actividades_usuarios.usuario_id, usuarioId),
+        eq(registro_actividades_usuarios.opcion_id, opcionRachaId),
+        gte(registro_actividades_usuarios.fecha, inicioSemana),
+        lte(registro_actividades_usuarios.fecha, finSemana),
+        isNull(registro_actividades_usuarios.deleted_at)
+      )
+    );
+
+  const registrosSemanaSet = new Set(registrosSemana.map((r) => toDateKey(r.fecha_dia)));
+  const activacionesSemanaSet = new Set(activacionesSemanaRows.map((r) => toDateKey(r.fecha)));
+
+  const diasSemanaNombre = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  const semanaActual: PantallaPersonalDia[] = [];
+
+  for (let i = 0; i < 7; i++) {
+    const fecha = new Date(inicioSemana);
+    fecha.setDate(inicioSemana.getDate() + i);
+    const fechaIso = toIsoDate(fecha);
+
+    semanaActual.push({
+      fecha: fechaIso,
+      dia: diasSemanaNombre[i],
+      registro_emocional: registrosSemanaSet.has(fechaIso),
+      estrella_activada: activacionesSemanaSet.has(fechaIso),
+    });
+  }
+
+  const estrellaHoyActivada = activacionesSemanaSet.has(hoyIso);
+  const puedeActivarEstrellaHoy = registrosSemanaSet.has(hoyIso) && !estrellaHoyActivada;
+
+  const finEvolucion = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  const inicioEvolucion = new Date(finEvolucion);
+  inicioEvolucion.setDate(finEvolucion.getDate() - 13);
+
+  const evolucionCompleta = await getCalendarioEmocionalService(
+    usuarioId,
+    toIsoDate(inicioEvolucion),
+    toIsoDate(finEvolucion),
+  );
+
+  const serieUltimos7 = evolucionCompleta.slice(-7).map((item) => ({
+    fecha: item.fecha,
+    promedio: item.promedio,
+  }));
+
+  const ultimos7 = evolucionCompleta.slice(-7).map((item) => item.promedio);
+  const previos7 = evolucionCompleta.slice(-14, -7).map((item) => item.promedio);
+
+  const promedio = (items: number[]) => {
+    if (!items.length) return 0;
+    const suma = items.reduce((acc, value) => acc + value, 0);
+    return Math.round((suma / items.length) * 100) / 100;
+  };
+
+  const promedioUltimos7 = promedio(ultimos7);
+  const promedioPrevios7 = promedio(previos7);
+  const diferencia = promedioUltimos7 - promedioPrevios7;
+
+  const tendencia: 'subiendo' | 'estable' | 'bajando' =
+    diferencia > 0.15 ? 'subiendo' : diferencia < -0.15 ? 'bajando' : 'estable';
+
+  const estrellasRacha = await getRachaStarsTotals(usuarioId, opcionRachaId);
+
+  return {
+    dias_trabajados_en_mi: Number(diasTrabajadosRows[0]?.total ?? 0),
+    racha_actual: rachas.racha_actual,
+    racha_maxima_historica: rachas.racha_maxima_historica,
+    dias_sin_registrar: rachas.dias_sin_registrar,
+    ultimo_registro: rachas.ultimo_registro,
+    estrella_hoy_activada: estrellaHoyActivada,
+    puede_activar_estrella_hoy: puedeActivarEstrellaHoy,
+    estrellas_racha_total: estrellasRacha.total,
+    estrellas_racha_mes_actual: estrellasRacha.mesActual,
+    estado_animo_mas_frecuente: estadoAnimoMasFrecuente,
+    emociones_frecuentes: topEmociones.slice(0, 3),
+    evolucion_estado_animo: {
+      tendencia,
+      promedio_ultimos_7_dias: promedioUltimos7,
+      promedio_7_dias_anteriores: promedioPrevios7,
+      serie_ultimos_7_dias: serieUltimos7,
+    },
+    semana_actual: semanaActual,
+  };
+};
+
+export const activarRachaDiariaService = async (
+  usuarioId: number,
+): Promise<ActivarRachaDiariaData> => {
+  const hoyIso = getTodayIso();
+
+  const [registroHoy] = await db
+    .select({ id: registro_emocional.id })
+    .from(registro_emocional)
+    .where(
+      and(
+        eq(registro_emocional.usuario_id, usuarioId),
+        eq(registro_emocional.fecha_dia, hoyIso),
+        isNull(registro_emocional.deleted_at)
+      )
+    )
+    .limit(1);
+
+  if (!registroHoy) {
+    throw new Error('Debes completar tu registro emocional de hoy antes de activar tu estrella diaria.');
+  }
+
+  const opcionRachaId = await ensureRachaDiariaOptionId();
+
+  const [yaActivadaHoy] = await db
+    .select({ id: registro_actividades_usuarios.id })
+    .from(registro_actividades_usuarios)
+    .where(
+      and(
+        eq(registro_actividades_usuarios.usuario_id, usuarioId),
+        eq(registro_actividades_usuarios.opcion_id, opcionRachaId),
+        sql`DATE(${registro_actividades_usuarios.fecha}) = CURRENT_DATE`,
+        isNull(registro_actividades_usuarios.deleted_at)
+      )
+    )
+    .limit(1);
+
+  let activada = false;
+  if (!yaActivadaHoy) {
+    await db.insert(registro_actividades_usuarios).values({
+      usuario_id: usuarioId,
+      opcion_id: opcionRachaId,
+      fecha: new Date(),
+      vencimiento: new Date(),
+      observaciones: 'Estrella diaria por racha emocional activada',
+    });
+    activada = true;
+  }
+
+  const estrellasRacha = await getRachaStarsTotals(usuarioId, opcionRachaId);
+
+  return {
+    activada,
+    mensaje: activada
+      ? 'Racha diaria activada. Se otorgó 1 estrella.'
+      : 'Tu estrella diaria de hoy ya estaba activada.',
+    fecha: hoyIso,
+    estrella_otorgada: activada ? 1 : 0,
+    total_estrellas_racha: estrellasRacha.total,
+    estrellas_racha_mes_actual: estrellasRacha.mesActual,
+  };
 };

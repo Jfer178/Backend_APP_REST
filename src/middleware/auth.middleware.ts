@@ -61,3 +61,15 @@ export const isAdmin = (req: AuthRequest, res: Response, next: NextFunction): vo
   
   next();
 };
+
+export const isBienestarUniversitario = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  const role = req.user?.role;
+  const allowed = role === ROLES.MODERADOR.nombre || role === ROLES.ADMIN.nombre;
+
+  if (!allowed) {
+    res.status(403).json({ message: 'Access forbidden: BienestarUniversitario/Admin role required' });
+    return;
+  }
+
+  next();
+};

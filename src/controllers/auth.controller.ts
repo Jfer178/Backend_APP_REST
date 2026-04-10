@@ -25,6 +25,19 @@ const loginSchema = z.object({
   contrasena: z.string(),
 });
 
+const recoverPasswordSchema = z
+  .object({
+    correo: z.string().email('Correo inválido'),
+    nuevaContrasena: z
+      .string()
+      .min(8, 'La contraseña debe tener al menos 8 caracteres'),
+    confirmarContrasena: z.string().min(8, 'Confirma la contraseña'),
+  })
+  .refine((data) => data.nuevaContrasena === data.confirmarContrasena, {
+    message: 'Las contraseñas no coinciden',
+    path: ['confirmarContrasena'],
+  });
+
 /**
  * Register a new user
  */
@@ -42,11 +55,12 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     }
 
     const userData = validationResult.data;
+    const correoNormalizado = userData.correo.toLowerCase().trim();
 
     // Check if user already exists
     const existingUser = await db.select()
       .from(usuarios)
-      .where(eq(usuarios.correo, userData.correo))
+      .where(eq(usuarios.correo, correoNormalizado))
       .limit(1);
 
     if (existingUser.length > 0) {
@@ -60,7 +74,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     // Create user - aseguramos que todos los campos requeridos están explícitamente establecidos
     const [newUser] = await db.insert(usuarios)
       .values({
-        correo: userData.correo,
+        correo: correoNormalizado,
         contrasena: hashedPassword,
         nombres: userData.nombres,
         apellidos: userData.apellidos,
@@ -113,10 +127,11 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
 
     const { correo, contrasena } = validationResult.data;
+    const correoNormalizado = correo.toLowerCase().trim();
 
     const results = await db.select()
       .from(usuarios)
-      .where(eq(usuarios.correo, correo))
+      .where(eq(usuarios.correo, correoNormalizado))
       .limit(1);
 
     if (results.length === 0) {
@@ -139,6 +154,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         break;
 
       case 2: rol = ROLES.PSICOLOGO.nombre;
+        break;
+
+      case 4: rol = ROLES.MODERADOR.nombre;
+        break;
+
+      case 5: rol = ROLES.INVITADO.nombre;
         break;
 
       default: rol = ROLES.USUARIO.nombre;
@@ -168,3 +189,52 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ message: 'Error en el servidor' });
   }
 }; 
+
+/**
+ * Recover user password
+ */
+export const recoverPassword = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const validationResult = recoverPasswordSchema.safeParse(req.body);
+
+    if (!validationResult.success) {
+      res.status(400).json({
+        message: 'Datos inválidos',
+        errors: validationResult.error.errors,
+      });
+      return;
+    }
+
+    const { correo, nuevaContrasena } = validationResult.data;
+    const correoNormalizado = correo.toLowerCase().trim();
+
+    const userResult = await db
+      .select()
+      .from(usuarios)
+      .where(eq(usuarios.correo, correoNormalizado))
+      .limit(1);
+
+    if (userResult.length === 0) {
+      res.status(404).json({ message: 'Usuario no encontrado' });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(nuevaContrasena, 10);
+
+    await db
+      .update(usuarios)
+      .set({
+        contrasena: hashedPassword,
+        updated_at: new Date(),
+      })
+      .where(eq(usuarios.correo, correoNormalizado));
+
+    res.status(200).json({ message: 'Contraseña actualizada exitosamente' });
+  } catch (error) {
+    console.error('Error recovering password:', error);
+    res.status(500).json({ message: 'Error en el servidor' });
+  }
+};

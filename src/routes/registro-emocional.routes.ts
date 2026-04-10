@@ -14,6 +14,8 @@ import {
   getRachas,
   getEstadisticas,
   getResumenDia,
+  getPantallaPersonal,
+  activarRachaDiaria,
 } from '../controllers/estadisticas-registro-emocional.controller';
 
 const router = Router();
@@ -35,6 +37,8 @@ router.post('/', authenticate, isUsuario, validateSaveRespuestasRegistroEmociona
 router.get('/calendario', authenticate, isUsuario, getCalendarioEmocional);
 router.get('/rachas', authenticate, isUsuario, getRachas);
 router.get('/estadisticas', authenticate, isUsuario, getEstadisticas);
+router.get('/pantalla-personal', authenticate, isUsuario, getPantallaPersonal);
+router.post('/pantalla-personal/activar-racha', authenticate, isUsuario, activarRachaDiaria);
 router.get('/resumen-dia/:fecha', authenticate, isUsuario, getResumenDia);
 
 export default router;

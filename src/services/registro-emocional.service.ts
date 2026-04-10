@@ -104,6 +104,30 @@ export const getPreguntasRegistroEmocionalService = async () => {
   return Array.from(preguntasMap.values());
 };
 
+export const getPreguntasAleatoriosService = async () => {
+  // Obtener todas las preguntas
+  const todasLasPreguntas = await getPreguntasRegistroEmocionalService();
+  
+  // Si hay 7 o menos preguntas, retornar todas
+  if (todasLasPreguntas.length <= 7) {
+    return todasLasPreguntas;
+  }
+  
+  // Seleccionar 7 preguntas aleatorias
+  const preguntasAleatorias: typeof todasLasPreguntas = [];
+  const indices = new Set<number>();
+  
+  while (preguntasAleatorias.length < 5) {
+    const indiceAleatorio = Math.floor(Math.random() * todasLasPreguntas.length);
+    if (!indices.has(indiceAleatorio)) {
+      indices.add(indiceAleatorio);
+      preguntasAleatorias.push(todasLasPreguntas[indiceAleatorio]);
+    }
+  }
+  
+  return preguntasAleatorias;
+};
+
 export const getRespuestasUsuarioPorFechaService = async (usuarioId: number, fechaDdMmYyyy: string) => {
   const fechaIso = parseDdMmYyyyToIso(fechaDdMmYyyy);
   if (!fechaIso) {
