@@ -846,7 +846,10 @@ Usuario: ${mensaje}
     }
 
     // Llamar a la IA
-    const respuestaIA = await chatWithOllama(prompt, contexto);
+    const respuestaIA = await chatWithOllama({
+      mensaje: prompt,
+      contexto,
+    });
 
     // Procesar respuesta
     const tareas = extraerTareasDelContenido(respuestaIA.respuesta);

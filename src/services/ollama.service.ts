@@ -492,8 +492,9 @@ export const chatWithOllama = async (params: {
   contexto?: string;
   modo?: ModoRespuesta;
 }): Promise<ChatResponse> => {
+  const { mensaje, contexto, modo } = params;
+
   try {
-    const { mensaje, contexto, modo } = params;
     const systemPrompt = construirSystemPrompt(modo);
 
     let prompt = mensaje;
