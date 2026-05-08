@@ -20,20 +20,32 @@ const chatIASchema = z.object({
 
 const PALABRAS_ALERTA_CRITICA = [
   'suicid',
+  'suicidio',
+  'suicidarme',
   'quitarme la vida',
   'no quiero vivir',
   'matarme',
+  'me voy a matar',
   'autoles',
+  'autolesion',
+  'autolesionarme',
   'hacerme dano',
   'hacerme da\u00f1o',
   'lastimarme',
+  'lastimarme a mi mismo',
   'cortarme',
+  'me quiero cortar',
   'sobredosis',
   'me quiero morir',
+  'quiero desaparecer',
+  'me quiero desaparecer',
   'sin salida',
   'crisis',
+  'crisis emocional',
   'no aguanto mas',
   'no aguanto m\u00e1s',
+  'no puedo mas',
+  'no puedo m\u00e1s',
 ];
 
 const normalizarTexto = (texto: string) =>
@@ -41,6 +53,56 @@ const normalizarTexto = (texto: string) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
+
+const limpiarTextoContexto = (texto: string, maxLen: number): string =>
+  texto.replace(/\s+/g, ' ').trim().slice(0, maxLen);
+
+const detectarModoProfundo = (mensaje: string): boolean => {
+  const t = normalizarTexto(mensaje);
+  const claves = [
+    'me siento',
+    'estoy mal',
+    'no puedo',
+    'no tengo ganas',
+    'me duele',
+    'ansiedad',
+    'depres',
+    'soledad',
+    'quiero hablar',
+    'necesito ayuda',
+    'me esta costando',
+    'llor',
+    'vac',
+  ];
+
+  return t.length > 120 || claves.some((clave) => t.includes(clave));
+};
+
+const obtenerHistorialReciente = async (chatId: number, limit: number = 6): Promise<string> => {
+  const mensajes = await db
+    .select({
+      mensaje: schema.mensajes_chat.mensaje,
+      usuario_id: schema.mensajes_chat.usuario_id,
+      enviado_en: schema.mensajes_chat.enviado_en,
+    })
+    .from(schema.mensajes_chat)
+    .where(eq(schema.mensajes_chat.chat_id, chatId))
+    .orderBy(desc(schema.mensajes_chat.enviado_en))
+    .limit(limit);
+
+  if (!mensajes.length) return '';
+
+  const resumen = mensajes
+    .reverse()
+    .map((m) => {
+      const rol = m.usuario_id ? 'Usuario' : 'NOA';
+      const texto = limpiarTextoContexto(m.mensaje, 220);
+      return `${rol}: ${texto}`;
+    })
+    .join(' | ');
+
+  return resumen;
+};
 
 const detectarAlertaCritica = (mensaje: string) => {
   const mensajeNormalizado = normalizarTexto(mensaje);
@@ -319,8 +381,23 @@ export const chatConIA = async (req: AuthRequest, res: Response): Promise<void> 
     ].join(' ');
 
     try {
+      const historialReciente = await obtenerHistorialReciente(chatIAId, 6);
+      const modo = detectarModoProfundo(mensaje) ? 'profundo' : 'normal';
+
+      const partesContexto = [
+        contextoNOA,
+        historialReciente ? `Historial breve: ${historialReciente}` : null,
+        contexto ? `Contexto extra: ${contexto}` : null,
+      ].filter(Boolean);
+
+      const contextoFinal = partesContexto.join(' | ');
+
       const respuestaIA = await Promise.race([
-        chatWithOllama(mensaje, [contextoNOA, contexto].filter(Boolean).join(' | ')),
+        chatWithOllama({
+          mensaje,
+          contexto: contextoFinal,
+          modo,
+        }),
         new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Timeout')), 35000)
         )

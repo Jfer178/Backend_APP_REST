@@ -104,6 +104,68 @@ const construirRespuestaFallback = (mensaje: string): string => {
   return plantillas[indice];
 };
 
+const contarPalabras = (texto: string): number =>
+  normalizar(texto)
+    .split(/\s+/)
+    .filter(Boolean).length;
+
+const contieneRastroIA = (respuesta: string): boolean => {
+  const r = normalizar(respuesta);
+  return (
+    r.includes('como ia') ||
+    r.includes('como inteligencia artificial') ||
+    r.includes('no puedo') ||
+    r.includes('no tengo permitido')
+  );
+};
+
+const respuestaDemasiadoGenerica = (respuesta: string): boolean => {
+  const r = normalizar(respuesta);
+  return (
+    r.includes('estoy aqui para ayudarte') ||
+    r.includes('lamento lo que sientes') ||
+    r.includes('entiendo como te sientes') ||
+    r.includes('gracias por compartir') ||
+    r.includes('cuentame mas')
+  );
+};
+
+const esRespuestaBajaCalidad = (respuesta: string, mensaje: string): boolean => {
+  if (!respuesta) return true;
+  if (respuesta.length < 40) return true;
+  if (contarPalabras(respuesta) < 18) return true;
+  if (esRespuestaDesechable(respuesta)) return true;
+  if (contieneRastroIA(respuesta)) return true;
+  if (respuestaDemasiadoGenerica(respuesta)) return true;
+
+  const mensajeNormalizado = normalizar(mensaje);
+  const respuestaNormalizada = normalizar(respuesta);
+  const palabrasClave = mensajeNormalizado
+    .split(/\s+/)
+    .filter((p) => p.length >= 5)
+    .slice(0, 6);
+
+  const coincideAlgo = palabrasClave.some((p) => respuestaNormalizada.includes(p));
+  return !coincideAlgo && !detectarRiesgoEnTexto(mensaje);
+};
+
+const construirPromptReintento = (mensaje: string, contexto?: string): string => {
+  const base = `Tu respuesta anterior fue vaga o poco util.
+Reintenta siguiendo este formato exacto:
+1) Validacion emocional breve (1 frase)
+2) Respuesta directa al problema (1-2 frases)
+3) 2 acciones pequenas y concretas en vinetas
+4) 1 pregunta corta para continuar
+
+Evita frases genericas. No menciones que eres IA.`;
+
+  if (!contexto) {
+    return `${base}\n\nMensaje del usuario: ${mensaje}`;
+  }
+
+  return `${base}\n\nContexto: ${contexto}\nMensaje del usuario: ${mensaje}`;
+};
+
 /**
  * Verifica si Ollama está disponible y el modelo está cargado
  */
@@ -390,40 +452,69 @@ export const analizarRespuestasOllama = async (
 /**
  * Chat general con IA usando Ollama
  */
-export const chatWithOllama = async (mensaje: string, contexto?: string): Promise<ChatResponse> => {
-  try {
-    const systemPrompt = `Eres NOA, un amigo virtual de confianza que brinda acompanamiento emocional a estudiantes.
+type ModoRespuesta = 'normal' | 'profundo';
+
+const construirSystemPrompt = (modo: ModoRespuesta = 'normal'): string => {
+  const reglasBase = `Eres NOA, un amigo virtual que acompana emocionalmente a estudiantes.
 
 Reglas de estilo obligatorias:
 - Responde en espanol con tono humano, calido y cercano.
 - Comienza validando la emocion del usuario en una frase breve.
 - Responde de forma conectada a lo que la persona dijo (no cambies de tema).
+- Incluye 1 pregunta corta para entender mejor.
 - Si el usuario pide ayuda concreta, entrega 2 o 3 sugerencias practicas y realistas.
 - Si el usuario esta molesto o usa insultos, mantente sereno, repara el vinculo y continua apoyando.
 - Evita respuestas roboticas o repetitivas.
-- Limita la respuesta a un maximo de 90 palabras.
+- No uses frases como "como IA" o "no puedo".
 
 IMPORTANTE:
 - Mantente empatico, claro y respetuoso.
 - Evita diagnosticos clinicos o indicaciones medicas.
 - Si detectas riesgo de autolesion o crisis grave, prioriza contencion y sugiere apoyo profesional inmediato.
 - Da respuestas utiles, concretas y humanas.`;
-    
+
+  if (modo === 'profundo') {
+    return `${reglasBase}
+
+Modo profundo:
+- Puedes usar hasta 180 palabras.
+- Explora con cuidado el contexto emocional, sin presionar.
+- Prioriza una respuesta mas reflexiva y calida.`;
+  }
+
+  return `${reglasBase}
+
+Limita la respuesta a un maximo de 120 palabras.`;
+};
+
+export const chatWithOllama = async (params: {
+  mensaje: string;
+  contexto?: string;
+  modo?: ModoRespuesta;
+}): Promise<ChatResponse> => {
+  try {
+    const { mensaje, contexto, modo } = params;
+    const systemPrompt = construirSystemPrompt(modo);
+
     let prompt = mensaje;
     if (contexto) {
       prompt = `Contexto: ${contexto}\n\nPregunta: ${mensaje}`;
     }
 
     const respuestaCruda = await queryOllama(prompt, systemPrompt);
-    const respuesta = respuestaCruda.trim();
+    let respuesta = respuestaCruda.trim();
 
-    const usarFallback =
-      !respuesta ||
-      respuesta.length < 18 ||
-      esRespuestaDesechable(respuesta);
-    
+    if (esRespuestaBajaCalidad(respuesta, mensaje)) {
+      const promptReintento = construirPromptReintento(mensaje, contexto);
+      const respuestaReintento = await queryOllama(promptReintento, systemPrompt);
+      const reintento = respuestaReintento.trim();
+      respuesta = esRespuestaBajaCalidad(reintento, mensaje)
+        ? construirRespuestaFallback(mensaje)
+        : reintento;
+    }
+
     return {
-      respuesta: usarFallback ? construirRespuestaFallback(mensaje) : respuesta,
+      respuesta,
       timestamp: new Date().toISOString()
     };
   } catch (error) {
