@@ -8,7 +8,7 @@ services:
       - JWT_SECRET=your-secret-key-change-in-production
       - OPENAI_API_KEY=your-openai-api-key
       - OLLAMA_API_URL=http://ollama:11434
-      - OLLAMA_MODEL=qwen2.5:0.5b
+      - OLLAMA_MODEL=qwen2:1.5b
       - USE_OLLAMA=true
       - PORT=3000
     depends_on:
@@ -64,7 +64,7 @@ services:
         ATTEMPT=$$((ATTEMPT+1));
         sleep 5;
       done;
-      curl -s http://ollama:11434/api/tags | grep -q qwen2.5 || curl -X POST http://ollama:11434/api/pull -H 'Content-Type: application/json' -d '{\"name\":\"qwen2.5:0.5b\"}' --no-buffer;
+      curl -s http://ollama:11434/api/tags | grep -q qwen2 || curl -X POST http://ollama:11434/api/pull -H 'Content-Type: application/json' -d '{\"name\":\"qwen2:1.5b\"}' --no-buffer;
       echo 'Ollama ready';
       "
     networks:

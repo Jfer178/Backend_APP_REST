@@ -399,7 +399,7 @@ export const chatConIA = async (req: AuthRequest, res: Response): Promise<void> 
           modo,
         }),
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout')), 35000)
+          setTimeout(() => reject(new Error('Timeout')), 70000)
         )
       ]) as any;
 
@@ -1009,7 +1009,6 @@ export const detenerChatIA = async (req: AuthRequest, res: Response): Promise<vo
           eq(schema.chats.estudiante_id, req.user.id),
           eq(schema.chats.isSendByAi, true),
           eq(schema.chats.is_active, true),
-          isNull(schema.chats.psicologo_id),
         ),
       )
       .orderBy(desc(schema.chats.ultima_actividad))

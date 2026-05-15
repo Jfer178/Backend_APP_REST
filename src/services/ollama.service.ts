@@ -1,9 +1,5 @@
-import dotenv from 'dotenv';
-
-dotenv.config();
-
 const OLLAMA_API_URL = process.env.OLLAMA_API_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:0.5b'; // Modelo más liviano disponible
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2:1.5b'; // Modelo balanceado para CPU
 
 interface OllamaResponse {
   model: string;
@@ -44,7 +40,7 @@ const detectarRiesgoEnTexto = (texto: string): boolean => {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 
-  const claves = [
+  const clavesAltas = [
     'suicid',
     'matarme',
     'me quiero morir',
@@ -53,9 +49,49 @@ const detectarRiesgoEnTexto = (texto: string): boolean => {
     'hacerme dano',
     'lastimarme',
     'cortarme',
+    'desaparecer',
+    'no aguanto mas',
+    'ya no puedo',
+    'no tiene solucion',
   ];
 
-  return claves.some((clave) => normalizado.includes(clave));
+  return clavesAltas.some((clave) => normalizado.includes(clave));
+};
+
+// Detecta tipo de emoción principal
+const detectarEmocion = (texto: string): string => {
+  const n = normalizar(texto);
+  
+  const emociones = {
+    ansiedad: ['ansioso', 'ansiedad', 'nervios', 'nervioso', 'presion', 'preocup', 'tengo miedo'],
+    tristeza: ['triste', 'tristeza', 'llor', 'deprim', 'vacio', 'sin senti', 'melanc'],
+    estres: ['estres', 'agobiad', 'abrumad', 'sobrecargad', 'parcial', 'examen', 'trabajos'],
+    estrés_académico: ['parcial', 'examen', 'trabajos', 'tareas', 'calificacion', 'nota', 'estudiante'],
+    desmotivacion_academica: [
+      'desmotiv',
+      'sin interes',
+      'perdiendo el interes',
+      'perdi el interes',
+      'no me interesa',
+      'no quiero estudiar',
+      'me aburre estudiar',
+      'no quiero ir a clases',
+      'me aburre la universidad',
+    ],
+    soledad: ['solo', 'aislad', 'sin nadie', 'no tengo con quien', 'alejaron', 'solitario'],
+    agotamiento: ['cansado', 'agotad', 'sin energia', 'sin ganas', 'fatigad'],
+    fracaso: ['fracaso', 'no sirvo', 'no puedo', 'incapaz'],
+    alegria: ['feliz', 'bien', 'mejora', 'logre', 'consegui', 'orgulloso'],
+    relaciones: ['familia', 'amigos', 'relacion', 'peleando', 'compañero', 'novio'],
+  };
+  
+  for (const [emocion, palabras] of Object.entries(emociones)) {
+    if (palabras.some(p => n.includes(p))) {
+      return emocion;
+    }
+  }
+  
+  return 'neutral';
 };
 
 const normalizar = (texto: string): string =>
@@ -71,37 +107,51 @@ const esRespuestaDesechable = (respuesta: string): boolean => {
 
 const construirRespuestaFallback = (mensaje: string): string => {
   if (detectarRiesgoEnTexto(mensaje)) {
-    return MENSAJE_CRITICO_FALLBACK;
+    return 'Escúchame: lo que sientes es real y importante. Pero necesitas ayuda ahora mismo. Por favor llama al 123 (Salvavidas) o habla con tu familia, un profesor o consejería. Yo puedo acompañarte, pero necesitas apoyo profesional urgente. ¿Estás en un lugar seguro?';
   }
 
-  const normalizado = normalizar(mensaje);
+  const emocion = detectarEmocion(mensaje);
+  const n = normalizar(mensaje);
 
-  if (
-    normalizado.includes('que me recomiendas') ||
-    normalizado.includes('que recomiendas') ||
-    normalizado.includes('me siento triste') ||
-    normalizado.includes('estoy triste')
-  ) {
-    return 'Gracias por contarmelo. Si te parece, hagamos algo simple ahora: 1) respira 4-4-6 por 2 minutos, 2) toma agua y cambia de lugar 5 minutos, 3) escribe en una nota que necesitas hoy. Si quieres, me quedo contigo y lo hacemos paso a paso.';
+  // Respuestas específicas por emoción
+  if (emocion === 'estres_académico' || emocion === 'estres') {
+    return 'Entiendo que te sientas abrumado. Lo primero es respirar: inhala 4, sostén 4, exhala 6. Luego, ¿cuál de esos exámenes/trabajos te preocupa más ahora? Podemos hacer un plan paso a paso.';
   }
 
-  if (
-    normalizado.includes('mierda') ||
-    normalizado.includes('estupido') ||
-    normalizado.includes('idiota') ||
-    normalizado.includes('pendej')
-  ) {
-    return 'Siento si algo de lo que dije te hizo sentir peor. Quiero ayudarte de verdad. Si te parece, empezamos de nuevo: que fue lo que mas te dolio hoy?';
+  if (emocion === 'ansiedad') {
+    return 'Esa ansiedad que sientes es real. Aquí va algo que funciona: siéntate, nota 5 cosas que ves, 4 que tocas, 3 que oyes, 2 que hueles, 1 que saboreas. ¿Hace cuánto sientes esto?';
   }
 
-  const plantillas = [
-    'Te leo. Gracias por abrirte conmigo. Si quieres, podemos ir paso a paso con lo que te esta pasando hoy.',
-    'Estoy aqui contigo. Cuentame un poco mas: que fue lo mas pesado de tu dia?',
-    'Gracias por confiar en mi. Podemos hablar de eso y buscar algo pequeno que te ayude a sentirte un poco mejor ahora.',
-  ];
+  if (emocion === 'tristeza') {
+    return 'La tristeza que expreso es válida. No necesitas estar bien todo el tiempo. ¿Hay algo específico que te duele hoy, o es como un vacío general?';
+  }
 
-  const indice = Math.abs(mensaje.length) % plantillas.length;
-  return plantillas[indice];
+  if (emocion === 'agotamiento') {
+    return 'Ese cansancio que describes es tu cuerpo pidiendo pausa. Hoy: descansa 20 minutos, hidratate, y después hablamos. ¿Qué es lo más urgente ahora?';
+  }
+
+  if (emocion === 'soledad') {
+    return 'Estar rodeado pero sentirse solo es una soledad real. ¿Hay alguien en quien confíes para una conversación genuina? A veces basta una persona.';
+  }
+
+  if (emocion === 'fracaso') {
+    return 'Entiendo que te sientas así, pero una calificación o un error no define tu valor. ¿Qué aprendiste de esto? ¿Cuál fue la parte más difícil?';
+  }
+
+  if (emocion === 'alegria') {
+    return '¡Me alegra saber eso! Eso merece celebrarse. ¿Cómo te sentiste en el momento? ¿Qué hiciste bien?';
+  }
+
+  if (emocion === 'relaciones') {
+    return 'Los conflictos con familia o amigos pesan mucho. ¿Qué fue lo que más te molestó? Podemos pensar cómo manejarlo.';
+  }
+
+  if (emocion === 'desmotivacion_academica') {
+    return 'Perder el interés por la universidad puede ser señal de cansancio o desconexión con la carrera. ¿Qué parte te pesa más hoy: las materias, el ritmo o el sentido de lo que estudias? Si quieres, elegimos una cosa pequeña para retomar esta semana.';
+  }
+
+  // Fallback neutral empático
+  return 'Te leo. Gracias por confiar en mí. ¿Cuál es la parte que más te duele o que más peso tiene en esto?';
 };
 
 const contarPalabras = (texto: string): number =>
@@ -115,25 +165,62 @@ const contieneRastroIA = (respuesta: string): boolean => {
     r.includes('como ia') ||
     r.includes('como inteligencia artificial') ||
     r.includes('no puedo') ||
-    r.includes('no tengo permitido')
+    r.includes('no tengo permitido') ||
+    r.includes('noa:') ||
+    respuesta.includes('**') ||
+    respuesta.includes('*validacion') ||
+    respuesta.includes('*respuesta') ||
+    respuesta.includes('*1.') ||
+    respuesta.includes('*2.') ||
+    respuesta.includes('- **') ||
+    respuesta.includes('**divid')
   );
 };
 
 const respuestaDemasiadoGenerica = (respuesta: string): boolean => {
   const r = normalizar(respuesta);
-  return (
-    r.includes('estoy aqui para ayudarte') ||
-    r.includes('lamento lo que sientes') ||
-    r.includes('entiendo como te sientes') ||
-    r.includes('gracias por compartir') ||
-    r.includes('cuentame mas')
-  );
+  
+  const patronesGenericos = [
+    'estoy aqui para ayudarte',
+    'lamento lo que sientes',
+    'entiendo como te sientes',
+    'gracias por compartir',
+    'cuentame mas',
+    'estoy aqui contigo',
+    'cuentame un poco mas',
+    'si quieres podemos ir paso a paso'
+  ];
+  
+  const coincidencias = patronesGenericos.filter(p => r.includes(p)).length;
+  if (coincidencias >= 3) return true;
+  if (respuesta.length < 60 && coincidencias >= 2) return true;
+  
+  return false;
+};
+
+const limpiarRespuestaEstructura = (respuesta: string): string => {
+  // Eliminar asteriscos, guiones con estructura, números con puntos
+  let limpia = respuesta
+    .replace(/\*\*/g, '')
+    .replace(/\* /g, '')
+    .replace(/^-\s+\*\*/gm, '')
+    .replace(/^\d+\)\s+\*\*/gm, '')
+    .replace(/^\d+\.\s+\*\*/gm, '')
+    .replace(/^-\s+\d+\./gm, '')
+    .replace(/^- /gm, '');
+  
+  const lineas = limpia.split('\n').filter(l => l.trim().length > 5);
+  if (lineas.length > 8) {
+    return limpia.split('\n').slice(0, 3).join(' ').trim();
+  }
+  
+  return limpia.trim();
 };
 
 const esRespuestaBajaCalidad = (respuesta: string, mensaje: string): boolean => {
   if (!respuesta) return true;
-  if (respuesta.length < 40) return true;
-  if (contarPalabras(respuesta) < 18) return true;
+  if (respuesta.length < 25) return true;
+  if (contarPalabras(respuesta) < 10) return true;
   if (esRespuestaDesechable(respuesta)) return true;
   if (contieneRastroIA(respuesta)) return true;
   if (respuestaDemasiadoGenerica(respuesta)) return true;
@@ -146,17 +233,24 @@ const esRespuestaBajaCalidad = (respuesta: string, mensaje: string): boolean => 
     .slice(0, 6);
 
   const coincideAlgo = palabrasClave.some((p) => respuestaNormalizada.includes(p));
-  return !coincideAlgo && !detectarRiesgoEnTexto(mensaje);
+  return !coincideAlgo && respuesta.length < 120 && !detectarRiesgoEnTexto(mensaje);
 };
 
 const construirPromptReintento = (mensaje: string, contexto?: string): string => {
   const base = `Tu respuesta anterior fue vaga o poco util.
-Reintenta siguiendo este formato exacto:
-1) Validacion emocional breve (1 frase)
-2) Respuesta directa al problema (1-2 frases)
-3) 2 acciones pequenas y concretas en vinetas
-4) 1 pregunta corta para continuar
+Reintenta con una respuesta natural y concreta.
+Formato interno (NO lo escribas como lista ni lo cites):
+- Validacion emocional breve (1 frase)
+- Respuesta directa al problema (1-2 frases)
+- 2 acciones pequenas y concretas en vinetas
+- 1 pregunta corta para continuar
 
+Reglas estrictas:
+- No repitas el mensaje del usuario.
+- No uses etiquetas ni numeros del formato.
+- No digas "Hola! Soy NOA" ni presentes tu identidad.
+- No uses frases como "estoy aqui para ayudarte" sin contenido.
+- Manten enfoque en el tema del usuario.
 Evita frases genericas. No menciones que eres IA.`;
 
   if (!contexto) {
@@ -182,7 +276,7 @@ export const checkOllamaHealth = async (): Promise<boolean> => {
     
     if (!response.ok) return false;
     
-    const data = await response.json();
+    const data = await response.json() as { models?: { name: string }[] };
     const models = data.models || [];
     return models.some((model: any) => model.name.includes(OLLAMA_MODEL.split(':')[0]));
   } catch (error) {
@@ -241,12 +335,12 @@ export const downloadModel = async (): Promise<boolean> => {
 };
 
 /**
- * Consulta a Ollama con timeout de 30 segundos
+ * Consulta a Ollama con timeout de 60 segundos
  */
 export const queryOllama = async (prompt: string, systemPrompt?: string): Promise<string> => {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); // 30 segundos de timeout
+    const timeout = setTimeout(() => controller.abort(), 60000); // 60 segundos de timeout
 
     const messages = [];
     
@@ -266,9 +360,9 @@ export const queryOllama = async (prompt: string, systemPrompt?: string): Promis
         messages,
         stream: false,
         options: {
-          temperature: 0.3,
-          top_p: 0.9,
-          top_k: 40,
+          temperature: 0.7,
+          top_p: 0.95,
+          top_k: 50,
         }
       }),
       signal: controller.signal
@@ -280,11 +374,11 @@ export const queryOllama = async (prompt: string, systemPrompt?: string): Promis
       throw new Error(`Error en Ollama API: ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as { message?: { content?: string } };
     return data.message?.content || 'No se pudo generar respuesta';
   } catch (error: any) {
     if (error.name === 'AbortError') {
-      console.error('Timeout: Ollama tardó más de 30 segundos en responder');
+      console.error('Timeout: Ollama tardó más de 60 segundos en responder');
       throw new Error('Ollama no responde. Por favor, intenta nuevamente.');
     }
     console.error('Error consultando Ollama:', error);
@@ -455,36 +549,26 @@ export const analizarRespuestasOllama = async (
 type ModoRespuesta = 'normal' | 'profundo';
 
 const construirSystemPrompt = (modo: ModoRespuesta = 'normal'): string => {
-  const reglasBase = `Eres NOA, un amigo virtual que acompana emocionalmente a estudiantes.
+  return `Tu nombre es NOA. Eres un amigo amable que apoya a estudiantes universitarios.
 
-Reglas de estilo obligatorias:
-- Responde en espanol con tono humano, calido y cercano.
-- Comienza validando la emocion del usuario en una frase breve.
-- Responde de forma conectada a lo que la persona dijo (no cambies de tema).
-- Incluye 1 pregunta corta para entender mejor.
-- Si el usuario pide ayuda concreta, entrega 2 o 3 sugerencias practicas y realistas.
-- Si el usuario esta molesto o usa insultos, mantente sereno, repara el vinculo y continua apoyando.
-- Evita respuestas roboticas o repetitivas.
-- No uses frases como "como IA" o "no puedo".
+RESPONDE SIEMPRE ASÍ:
+1. Valida la emoción (1 frase).
+2. Responde directo al problema (1-2 frases).
+3. Ofrece 1 acción concreta (10-20 minutos máximo).
+4. Termina con 1 pregunta.
+5. Máximo 100 palabras. Natural, sin listas.
 
-IMPORTANTE:
-- Mantente empatico, claro y respetuoso.
-- Evita diagnosticos clinicos o indicaciones medicas.
-- Si detectas riesgo de autolesion o crisis grave, prioriza contencion y sugiere apoyo profesional inmediato.
-- Da respuestas utiles, concretas y humanas.`;
+NO HAGAS:
+- Diagnostiques ("tienes depresión").
+- Des medicamentos.
+- Repitas la pregunta del usuario.
+- Hagas preguntas ya hechas.
+- Uses números ni viñetas.
 
-  if (modo === 'profundo') {
-    return `${reglasBase}
+Ejemplo: Usuario dice "Tengo 3 exámenes."
+NOA: "Tres exámenes es mucho. Cuál te preocupa más ahora? Ese enfocamos primero."
 
-Modo profundo:
-- Puedes usar hasta 180 palabras.
-- Explora con cuidado el contexto emocional, sin presionar.
-- Prioriza una respuesta mas reflexiva y calida.`;
-  }
-
-  return `${reglasBase}
-
-Limita la respuesta a un maximo de 120 palabras.`;
+Tono: amigo genuino, empático, directo.`;
 };
 
 export const chatWithOllama = async (params: {
@@ -496,19 +580,26 @@ export const chatWithOllama = async (params: {
 
   try {
     const systemPrompt = construirSystemPrompt(modo);
+    const emocion = detectarEmocion(mensaje);
 
-    let prompt = mensaje;
+    let prompt = `Usuario: ${mensaje}`;
     if (contexto) {
-      prompt = `Contexto: ${contexto}\n\nPregunta: ${mensaje}`;
+      prompt = `Contexto conversacional: ${contexto}\n\n${prompt}`;
     }
 
+    // Primera consulta
     const respuestaCruda = await queryOllama(prompt, systemPrompt);
-    let respuesta = respuestaCruda.trim();
+    let respuesta = limpiarRespuestaEstructura(respuestaCruda.trim());
 
+    // Validar calidad y reintentarsi es necesario
     if (esRespuestaBajaCalidad(respuesta, mensaje)) {
-      const promptReintento = construirPromptReintento(mensaje, contexto);
+      const promptReintento = `Usuario: ${mensaje}
+
+Instrucción: Responde de manera natural como un amigo. Valida el sentimiento, responde directo al problema, ofrece una acción concreta. Máximo 100 palabras.`;
+      
       const respuestaReintento = await queryOllama(promptReintento, systemPrompt);
-      const reintento = respuestaReintento.trim();
+      const reintento = limpiarRespuestaEstructura(respuestaReintento.trim());
+      
       respuesta = esRespuestaBajaCalidad(reintento, mensaje)
         ? construirRespuestaFallback(mensaje)
         : reintento;
