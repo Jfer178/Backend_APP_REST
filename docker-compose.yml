@@ -78,5 +78,11 @@ volumes:
     driver: local
 
 networks:
-  app-network:
-    driver: bridge 
+  app_network:
+    name: app_network
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${DOCKER_NETWORK_SUBNET:-10.201.3.0/24}
+          gateway: ${DOCKER_NETWORK_GATEWAY:-10.201.3.1}
