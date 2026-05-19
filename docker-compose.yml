@@ -78,8 +78,8 @@ volumes:
     driver: local
 
 networks:
-  app_network:
-    name: app_network
+  app-network:
+    name: app-network
     driver: bridge
     ipam:
       driver: default
