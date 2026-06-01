@@ -19,33 +19,118 @@ const chatIASchema = z.object({
 });
 
 const PALABRAS_ALERTA_CRITICA = [
+  // Suicidio
   'suicid',
   'suicidio',
   'suicidarme',
+  'me suicidio',
+  'voy a suicidarme',
+  'me voy a suicidar',
+  'quiero suicidarme',
+  'voy a suicidar',
+  
+  // Quitarse la vida
   'quitarme la vida',
+  'me quiero quitar la vida',
   'no quiero vivir',
+  'ya no quiero vivir',
+  'prefiero no vivir',
+  'no vale la pena vivir',
+  
+  // Matarse
   'matarme',
   'me voy a matar',
+  'voy a matar',
+  'me quiero matar',
+  'quiero matar',
+  'me voy a matar',
+  'me estoy matando',
+  
+  // Autolesiones
   'autoles',
   'autolesion',
   'autolesionarme',
+  'me autolesiono',
+  'voy a autolesionarme',
+  'quiero autolesionarme',
+  
+  // Hacerse daño
   'hacerme dano',
-  'hacerme da\u00f1o',
+  'hacerme daño',
+  'me quiero hacer daño',
+  'voy a hacerme daño',
+  'quiero hacerme daño',
+  'me voy a hacer daño',
+  'me estoy haciendo daño',
+  
+  // Lastimarse
   'lastimarme',
+  'me quiero lastimar',
+  'voy a lastimarme',
+  'quiero lastimarme',
   'lastimarme a mi mismo',
+  'me voy a lastimar',
+  
+  // Cortarse
   'cortarme',
   'me quiero cortar',
+  'voy a cortar',
+  'quiero cortar',
+  'me voy a cortar',
+  'me estoy cortando',
+  'cortes',
+  'cortarme las venas',
+  
+  // Sobredosis/Drogas
   'sobredosis',
-  'me quiero morir',
-  'quiero desaparecer',
+  'voy a overdosear',
+  'quiero overdosear',
+  'me quiero overdosear',
+  
+  // Desaparecer
   'me quiero desaparecer',
+  'quiero desaparecer',
+  'desaparecer',
+  'me voy a desaparecer',
+  'me quiero ir y no volver',
+  'quiero no existir',
+  
+  // Morir/Muerte
+  'me quiero morir',
+  'quiero morir',
+  'voy a morir',
+  'me voy a morir',
+  'solo quiero morir',
+  'me estoy muriendo',
+  'necesito morir',
+  
+  // Crisis extrema
   'sin salida',
+  'no hay salida',
   'crisis',
   'crisis emocional',
+  'crisis depresiva',
+  'quiero acabar con esto',
+  'necesito que termine todo',
+  
+  // No aguanta más
   'no aguanto mas',
-  'no aguanto m\u00e1s',
+  'no aguanto más',
+  'no aguanto',
   'no puedo mas',
-  'no puedo m\u00e1s',
+  'no puedo más',
+  'no puedo',
+  'no aguanto la vida',
+  'no puedo seguir asi',
+  'no puedo seguir así',
+  
+  // Desesperación
+  'estoy desesperado',
+  'me siento desesperado',
+  'esto es insoportable',
+  'no soporto mas',
+  'no soporto más',
+  'no soporto vivir',
 ];
 
 const normalizarTexto = (texto: string) =>
@@ -369,34 +454,25 @@ export const chatConIA = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    const contextoNOA = [
-      'Tu nombre es NOA y eres un amigo virtual de apoyo emocional para estudiantes.',
-      'Responde con tono cercano, natural y empatico, como un companero de confianza.',
-      'Primero valida en una frase como se siente la persona y luego responde exactamente a lo que dijo.',
-      'Si la persona pide recomendaciones, ofrece 2 o 3 acciones pequenas y practicas para hacer hoy.',
-      'Si la persona esta molesta o usa insultos, manten calma, muestra tacto y continua el apoyo sin confrontar.',
-      'Puedes hablar de temas cotidianos mientras mantengas una orientacion de bienestar emocional.',
-      'No des diagnosticos ni indicaciones medicas.',
-      'Si detectas crisis emocional, responde con contencion y recomienda hablar con psicologia de inmediato.',
-    ].join(' ');
-
     try {
-      const historialReciente = await obtenerHistorialReciente(chatIAId, 6);
+      const historialReciente = await obtenerHistorialReciente(chatIAId, 10); // Aumentado a 10 mensajes
       const modo = detectarModoProfundo(mensaje) ? 'profundo' : 'normal';
 
-      const partesContexto = [
-        contextoNOA,
-        historialReciente ? `Historial breve: ${historialReciente}` : null,
-        contexto ? `Contexto extra: ${contexto}` : null,
-      ].filter(Boolean);
-
-      const contextoFinal = partesContexto.join(' | ');
+      // Contar número de mensajes totales para variación de respuestas
+      const totalMensajesChat = await db
+        .select()
+        .from(schema.mensajes_chat)
+        .where(eq(schema.mensajes_chat.chat_id, chatIAId));
+      
+      const numeroMensaje = totalMensajesChat.length;
 
       const respuestaIA = await Promise.race([
         chatWithOllama({
           mensaje,
-          contexto: contextoFinal,
+          contexto: historialReciente, // Ahora solo historial, sin contexto hardcodeado
           modo,
+          userId: req.user.id, // Pasar userId para perfil
+          numeroMensaje, // Pasar para variación de estilos
         }),
         new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Timeout')), 70000)

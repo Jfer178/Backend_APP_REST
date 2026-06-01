@@ -1,3 +1,6 @@
+import { construirPromptDinamico, construirPromptFinal, generarRespuestaFallbackNatural, esRespuestaAceptable } from './prompts-enhanced.service';
+import { analizarPatronesEmocionales, construirResumenPerfil } from './user-profile.service';
+
 const OLLAMA_API_URL = process.env.OLLAMA_API_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2:1.5b'; // Modelo balanceado para CPU
 
@@ -546,63 +549,72 @@ export const analizarRespuestasOllama = async (
 /**
  * Chat general con IA usando Ollama
  */
+/**
+ * Chat general con IA usando Ollama
+ */
 type ModoRespuesta = 'normal' | 'profundo';
-
-const construirSystemPrompt = (modo: ModoRespuesta = 'normal'): string => {
-  return `Tu nombre es NOA. Eres un amigo amable que apoya a estudiantes universitarios.
-
-RESPONDE SIEMPRE ASÍ:
-1. Valida la emoción (1 frase).
-2. Responde directo al problema (1-2 frases).
-3. Ofrece 1 acción concreta (10-20 minutos máximo).
-4. Termina con 1 pregunta.
-5. Máximo 100 palabras. Natural, sin listas.
-
-NO HAGAS:
-- Diagnostiques ("tienes depresión").
-- Des medicamentos.
-- Repitas la pregunta del usuario.
-- Hagas preguntas ya hechas.
-- Uses números ni viñetas.
-
-Ejemplo: Usuario dice "Tengo 3 exámenes."
-NOA: "Tres exámenes es mucho. Cuál te preocupa más ahora? Ese enfocamos primero."
-
-Tono: amigo genuino, empático, directo.`;
-};
 
 export const chatWithOllama = async (params: {
   mensaje: string;
   contexto?: string;
   modo?: ModoRespuesta;
+  userId?: number;
+  numeroMensaje?: number;
 }): Promise<ChatResponse> => {
-  const { mensaje, contexto, modo } = params;
+  const { mensaje, contexto, modo, userId, numeroMensaje = 0 } = params;
 
   try {
-    const systemPrompt = construirSystemPrompt(modo);
-    const emocion = detectarEmocion(mensaje);
-
-    let prompt = `Usuario: ${mensaje}`;
-    if (contexto) {
-      prompt = `Contexto conversacional: ${contexto}\n\n${prompt}`;
+    // Obtener perfil del usuario si disponible
+    let perfilContexto = undefined;
+    let resumenPerfil = '';
+    
+    if (userId) {
+      try {
+        const perfil = await analizarPatronesEmocionales(userId, 25);
+        resumenPerfil = await construirResumenPerfil(userId);
+        perfilContexto = {
+          emociones_frecuentes: perfil.emociones_frecuentes,
+          temas_recurrentes: perfil.temas_recurrentes,
+          patrones: perfil.patrones_comportamiento,
+          dias_sin_comunicacion: perfil.dias_sin_comunicacion,
+          tiene_historial: perfil.emociones_frecuentes.length > 0,
+        };
+      } catch (e) {
+        console.log('No se pudo cargar perfil del usuario:', e);
+      }
     }
 
-    // Primera consulta
-    const respuestaCruda = await queryOllama(prompt, systemPrompt);
-    let respuesta = limpiarRespuestaEstructura(respuestaCruda.trim());
+    // Construir system prompt dinámico basado en perfil
+    const systemPrompt = construirPromptDinamico(perfilContexto);
 
-    // Validar calidad y reintentarsi es necesario
-    if (esRespuestaBajaCalidad(respuesta, mensaje)) {
-      const promptReintento = `Usuario: ${mensaje}
+    // Construir prompts con variación
+    let userPrompt = mensaje;
+    let contextoDinamico = resumenPerfil;
 
-Instrucción: Responde de manera natural como un amigo. Valida el sentimiento, responde directo al problema, ofrece una acción concreta. Máximo 100 palabras.`;
-      
-      const respuestaReintento = await queryOllama(promptReintento, systemPrompt);
-      const reintento = limpiarRespuestaEstructura(respuestaReintento.trim());
-      
-      respuesta = esRespuestaBajaCalidad(reintento, mensaje)
-        ? construirRespuestaFallback(mensaje)
-        : reintento;
+    if (contexto) {
+      contextoDinamico = `${resumenPerfil ? resumenPerfil + ' ' : ''}${contexto}`;
+    }
+
+    const promspts = construirPromptFinal(mensaje, systemPrompt, numeroMensaje, contextoDinamico);
+
+    // DEBUG: Log del estilo seleccionado
+    const estiloNum = numeroMensaje % 6;
+    console.log(`[NOA DEBUG] Estilo #${estiloNum} (mensaje #${numeroMensaje})`);
+
+    // Primera consulta - ahora con prompts mejorados
+    const respuestaCruda = await queryOllama(promspts.user, promspts.system);
+    let respuesta = respuestaCruda.trim();
+
+    // DEBUG: Log de respuesta cruda de Ollama
+    console.log(`[NOA DEBUG] Respuesta cruda Ollama: "${respuesta.substring(0, 100)}..."`);
+
+    // Validación más flexible - aceptamos más variedad de respuestas
+    if (!esRespuestaAceptable(respuesta, mensaje)) {
+      const fallbackEmocional = detectarEmocion(mensaje);
+      console.log(`[NOA DEBUG] Respuesta rechazada. Usando fallback emocional: ${fallbackEmocional}`);
+      respuesta = generarRespuestaFallbackNatural(fallbackEmocional, mensaje);
+    } else {
+      console.log(`[NOA DEBUG] ✅ Respuesta ACEPTADA`);
     }
 
     return {
@@ -611,9 +623,11 @@ Instrucción: Responde de manera natural como un amigo. Valida el sentimiento, r
     };
   } catch (error) {
     console.error('Error en chat con Ollama:', error);
-    
+
+    // Fallback más natural
+    const emocion = detectarEmocion(params.mensaje);
     return {
-      respuesta: construirRespuestaFallback(mensaje),
+      respuesta: generarRespuestaFallbackNatural(emocion, params.mensaje),
       timestamp: new Date().toISOString()
     };
   }
